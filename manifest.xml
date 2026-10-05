@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xsi:type="TaskPaneApp">
+  <Id>8dd97e9a-a842-4fc9-b24b-c01609e1800a</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Miguel</ProviderName>
+  <DefaultLocale>es-ES</DefaultLocale>
+  <DisplayName DefaultValue="Simulador de Riesgo"/>
+  <Description DefaultValue="Simulación Monte Carlo sobre las celdas de tu hoja: supuestos, pronósticos, histograma, certeza, sensibilidad y tornado."/>
+  <IconUrl DefaultValue="https://miguel-acha.github.io/simulador-riesgo/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://miguel-acha.github.io/simulador-riesgo/icon-64.png"/>
+  <SupportUrl DefaultValue="https://github.com/miguel-acha/simulador-riesgo"/>
+  <AppDomains>
+    <AppDomain>https://miguel-acha.github.io</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Workbook"/>
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://miguel-acha.github.io/simulador-riesgo/index.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <CustomTab id="Riesgo.Tab">
+              <Group id="Riesgo.Grupo">
+                <Label resid="Grupo.Label"/>
+                <Icon><bt:Image size="16" resid="Icon.16"/><bt:Image size="32" resid="Icon.32"/><bt:Image size="80" resid="Icon.80"/></Icon>
+                <Control xsi:type="Button" id="Riesgo.Boton">
+                  <Label resid="Boton.Label"/>
+                  <Supertip>
+                    <Title resid="Boton.Label"/>
+                    <Description resid="Boton.Tip"/>
+                  </Supertip>
+                  <Icon><bt:Image size="16" resid="Icon.16"/><bt:Image size="32" resid="Icon.32"/><bt:Image size="80" resid="Icon.80"/></Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Riesgo.Panel</TaskpaneId>
+                    <SourceLocation resid="Panel.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+              <Label resid="Tab.Label"/>
+            </CustomTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://miguel-acha.github.io/simulador-riesgo/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://miguel-acha.github.io/simulador-riesgo/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://miguel-acha.github.io/simulador-riesgo/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Panel.Url" DefaultValue="https://miguel-acha.github.io/simulador-riesgo/index.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Tab.Label" DefaultValue="Riesgo"/>
+        <bt:String id="Grupo.Label" DefaultValue="Monte Carlo"/>
+        <bt:String id="Boton.Label" DefaultValue="Simulador de Riesgo"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Boton.Tip" DefaultValue="Abre el panel para definir supuestos y pronósticos y ejecutar la simulación."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
