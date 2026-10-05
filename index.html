@@ -6,41 +6,82 @@
 <title>Simulador de Riesgo</title>
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 <style>
-:root{--bg:#f5f6f8;--card:#fff;--text:#1c2330;--muted:#667085;--line:#dfe3ea;--accent:#1d6f42;--accent-soft:#bfe0cd;--pos:#2563eb;--neg:#d9534f;--ok:#12805c;--err:#b42318}
+:root{--bg:#f3f5f4;--card:#fff;--text:#1b2420;--muted:#66736c;--line:#dde3df;--accent:#107c41;--accent-d:#0b5c30;--accent-soft:#bfe0cd;--tint:#e8f4ed;
+  --sup:#8fd694;--pro:#8ab4f8;--pos:#2563eb;--neg:#d9534f;--err:#b42318}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:13px/1.4 "Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,sans-serif}
-main{padding:10px;display:grid;gap:10px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px}
-h2{font-size:14px;margin:0 0 6px}
-h3{font-size:13px;margin:12px 0 6px}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.4 "Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,sans-serif;display:flex;flex-direction:column}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0}
+input{-webkit-appearance:none;appearance:none;background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-width:0}
+input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+[hidden]{display:none!important}
+
+.top{background:var(--accent);color:#fff;padding:10px 12px;display:flex;align-items:center;gap:8px}
+.top b{font-size:14px;flex:1}
+.top span{font-size:11px;background:rgba(255,255,255,.18);border-radius:10px;padding:2px 8px;white-space:nowrap}
+.nav{display:flex;background:var(--card);border-bottom:1px solid var(--line)}
+.nav button{flex:1;padding:9px 4px;color:var(--muted);font-weight:600;border-bottom:2px solid transparent}
+.nav button.on{color:var(--accent);border-bottom-color:var(--accent)}
+main{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+.vista{display:flex;flex-direction:column;gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.card h2{font-size:13px;margin:0 0 2px;display:flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:3px;display:inline-block;flex:none}
 .hint{color:var(--muted);font-size:12px;margin:0 0 8px}
-label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--muted);flex:1;min-width:90px}
-input,select,button{font:inherit;color:var(--text)}
-input,select{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:5px 6px;min-width:0;width:100%}
-button{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:5px 10px;cursor:pointer}
-button:hover{border-color:var(--accent)}
-button:disabled{opacity:.5;cursor:default}
-button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-button.wide{width:100%;margin-top:6px}
-button.mini{padding:2px 7px}
-.fila{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-top:6px}
-.item{display:flex;gap:6px;align-items:center;padding:5px 0;border-top:1px solid var(--line)}
+h3{font-size:12px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+
+.btn{display:block;width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:#fff;font-weight:600;text-align:center}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;padding:10px}
+.btn.primary:hover{background:var(--accent-d);color:#fff}
+.btn.dashed{border-style:dashed;color:var(--accent);background:var(--tint);margin-top:8px}
+.btn:disabled{opacity:.5;cursor:default}
+.mini{padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:12px}
+.mini:hover{border-color:var(--accent);color:var(--accent)}
+
+.item{display:flex;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
 .item:first-child{border-top:0}
 .item .info{flex:1;min-width:0;cursor:pointer}
 .item .info b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .info span{color:var(--muted);font-size:11px}
-#editor{background:var(--bg);border-radius:6px;padding:8px;margin-top:8px}
-#status{font-size:12px;min-height:16px;margin-top:6px}
-#status.err{color:var(--err)}#status.ok{color:var(--ok)}
-.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
-.tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
-canvas{width:100%;height:210px;display:block}
+.item input.nombre{border-color:transparent;padding:2px 4px;font-weight:600;background:transparent}
+.item input.nombre:hover,.item input.nombre:focus{border-color:var(--line);background:#fff}
+.vacio{color:var(--muted);font-size:12px;text-align:center;padding:10px 0}
+
+.campo{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);flex:1;min-width:80px}
+.fila{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{padding:5px 10px;border-radius:14px;border:1px solid var(--line);background:#fff;font-size:12px}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:#fff}
+.seg button{flex:1;padding:6px 4px;font-size:12px;border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button.on{background:var(--accent);color:#fff}
+.sw{display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer}
+.sw input{position:absolute;opacity:0;width:0;height:0}
+.sw i{width:32px;height:18px;border-radius:9px;background:#c5cdc8;position:relative;flex:none;transition:background .15s}
+.sw i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
+.sw input:checked+i{background:var(--accent)}
+.sw input:checked+i::after{left:16px}
+
+.progreso{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:10px}
+.progreso i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+#status{font-size:12px;min-height:16px;margin-top:6px;color:var(--muted)}
+#status.err{color:var(--err)}#status.ok{color:var(--accent)}
+canvas{display:block;width:100%}
+#vivoCv{height:110px;margin-top:8px}
+#hist{height:220px;touch-action:none;cursor:ew-resize}
+.certBox{background:var(--tint);border-radius:8px;padding:10px;margin-top:10px;text-align:center}
+.certBox b{display:block;font-size:24px;color:var(--accent-d);line-height:1.1}
+.certBox span{font-size:12px;color:var(--muted)}
 table{border-collapse:collapse;width:100%;font-size:12px}
-td{padding:3px 0;border-bottom:1px solid var(--line)}
-td:last-child{text-align:right;font-variant-numeric:tabular-nums}
-#certOut{display:block;font-weight:600;margin-top:6px}
-.bars{display:grid;gap:5px}
-.bar{display:grid;grid-template-columns:90px 1fr 84px;gap:6px;align-items:center;font-size:12px}
+td{padding:4px 0;border-bottom:1px solid var(--line)}
+td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.bars{display:grid;gap:6px}
+.bar{display:grid;grid-template-columns:88px 1fr 80px;gap:6px;align-items:center;font-size:12px}
 .bar .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bar .val{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
 .track{position:relative;height:14px;background:var(--bg);border-radius:3px}
@@ -48,97 +89,139 @@ td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .track .mid{width:1px;background:var(--muted)}
 .legend{font-size:11px;color:var(--muted);margin:6px 0 0}
 .legend b{display:inline-block;width:9px;height:9px;border-radius:2px;margin:0 3px 0 8px}
-[hidden]{display:none!important}
+.tabs{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
+
+/* Editor */
+#modal{position:fixed;inset:0;background:rgba(20,30,25,.45);display:flex;align-items:flex-end;z-index:10}
+#modal .hoja{background:var(--card);width:100%;max-height:96%;overflow:auto;border-radius:14px 14px 0 0;padding:14px}
+#modal h2{font-size:15px;margin:0 0 2px;display:flex;align-items:center;gap:6px}
+.galeria{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.dist{border:1px solid var(--line);border-radius:8px;padding:6px 2px 4px;text-align:center;font-size:11px;background:#fff}
+.dist svg{display:block;margin:0 auto 2px;width:40px;height:24px;fill:var(--accent-soft)}
+.dist.on{border-color:var(--accent);background:var(--tint);font-weight:600}
+.dist.on svg{fill:var(--accent)}
+#previa{height:90px;margin-top:10px;background:var(--bg);border-radius:8px}
+#edErr{color:var(--err);font-size:12px;min-height:16px;margin-top:6px}
+
 /* Ventana grande */
-body.dlg main{padding:18px;max-width:1200px;margin:0 auto}
-body.dlg .solo-panel{display:none}
-body.dlg canvas{height:340px}
+body.dlg .solo-panel{display:none!important}
+body.dlg main{padding:18px;max-width:1200px;margin:0 auto;width:100%}
+body.dlg{font-size:14px}body.dlg table{font-size:13px}
+body.dlg #hist{height:340px}
 body.dlg #cuerpo{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 28px}
 body.dlg .bar{grid-template-columns:150px 1fr 100px}
-body.dlg{font-size:14px}body.dlg table{font-size:13px}
 </style>
 </head>
 <body>
+<div class="top solo-panel"><b>Simulador de Riesgo</b><span>Celda: <strong id="selCelda">—</strong></span></div>
+<div class="nav solo-panel" id="nav">
+  <button data-vista="modelo" class="on">Modelo</button>
+  <button data-vista="resultados">Resultados</button>
+  <button data-vista="corridas">Corridas</button>
+</div>
 <main>
-  <section class="card solo-panel" id="aviso" hidden>
+  <div class="card solo-panel" id="aviso" hidden>
     <h2>Simulador de Riesgo</h2>
     <p class="hint">Este panel funciona dentro de Excel. Ábrelo desde la pestaña «Riesgo» de la cinta.</p>
-  </section>
+  </div>
 
-  <section class="card solo-panel">
-    <h2>1. Supuestos (entradas)</h2>
-    <p class="hint">Selecciona en la hoja una celda con un valor fijo y agrégala.</p>
-    <div id="supuestos"></div>
-    <button class="wide" id="addSup">＋ Supuesto en la celda seleccionada</button>
-  </section>
-
-  <section class="card solo-panel">
-    <h2>2. Pronósticos (salidas)</h2>
-    <p class="hint">Selecciona la celda con la fórmula del resultado (por ejemplo, el VAN).</p>
-    <div id="pronosticos"></div>
-    <button class="wide" id="addPro">＋ Pronóstico en la celda seleccionada</button>
-    <div id="editor" hidden></div>
-  </section>
-
-  <section class="card solo-panel">
-    <h2>3. Simulación</h2>
-    <div class="fila">
-      <label>Iteraciones<select id="iter">
-        <option>500</option><option selected>1000</option><option>2000</option><option>5000</option><option>10000</option>
-      </select></label>
-      <label>Semilla (opcional)<input id="semilla" type="number" step="1" placeholder="aleatoria"></label>
+  <div class="vista solo-panel" id="v-modelo">
+    <div class="card">
+      <h2><i class="dot" style="background:var(--sup)"></i>Supuestos de entrada</h2>
+      <p class="hint">Celdas con un número que quieres hacer variar al azar.</p>
+      <div id="supuestos"></div>
+      <button class="btn dashed" id="addSup">＋ Definir supuesto</button>
     </div>
-    <div class="fila">
-      <button class="primary" id="run" style="flex:1">Ejecutar simulación</button>
-      <button id="cancel" hidden>Cancelar</button>
+    <div class="card">
+      <h2><i class="dot" style="background:var(--pro)"></i>Pronósticos de salida</h2>
+      <p class="hint">Celdas con la fórmula del resultado, por ejemplo el VAN o la TIR.</p>
+      <div id="pronosticos"></div>
+      <button class="btn dashed" id="addPro">＋ Definir pronóstico</button>
     </div>
-    <div id="status"></div>
-  </section>
+    <div class="card">
+      <h2>Simulación</h2>
+      <div class="campo" style="margin-top:6px">Iteraciones
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="fila">
+        <label class="campo">Otra cantidad<input id="iter" type="number" min="10" max="100000" step="1"></label>
+        <label class="campo">Semilla (opcional)<input id="semilla" type="number" step="1" placeholder="aleatoria"></label>
+      </div>
+      <label class="sw"><input type="checkbox" id="vivo"><i></i>Ver la simulación mientras corre (más lento)</label>
+      <label class="sw"><input type="checkbox" id="colorear"><i></i>Colorear las celdas marcadas</label>
+    </div>
+    <div class="card">
+      <div style="display:flex;gap:8px">
+        <button class="btn primary" id="run">▶ Ejecutar simulación</button>
+        <button class="btn" id="cancel" style="width:auto" hidden>Detener</button>
+      </div>
+      <div class="progreso" id="progreso" hidden><i></i></div>
+      <canvas id="vivoCv" hidden></canvas>
+      <div id="status"></div>
+    </div>
+  </div>
 
-  <section class="card" id="results" hidden>
-    <h2 id="tituloRes">4. Resultados</h2>
-    <div class="tabs" id="tabs"></div>
-    <button class="wide solo-panel" id="ventana" style="margin:0 0 8px">Abrir en ventana grande</button>
-    <div id="cuerpo">
-      <div>
-        <canvas id="hist"></canvas>
-        <div class="fila">
-          <label>Límite inferior<input id="lo" type="number" step="any" placeholder="−∞"></label>
-          <label>Límite superior<input id="hi" type="number" step="any" placeholder="+∞"></label>
-          <label>Certeza %<input id="certPct" type="number" step="any" min="0" max="100"></label>
+  <div class="vista" id="v-resultados" hidden>
+    <div class="card" id="sinRes"><p class="vacio">Todavía no hay resultados. Ejecuta una simulación o abre una corrida guardada.</p></div>
+    <div class="card" id="results" hidden>
+      <h2 id="tituloRes"></h2>
+      <p class="hint" id="subRes"></p>
+      <div class="tabs" id="tabs"></div>
+      <button class="btn solo-panel" id="ventana" style="margin-bottom:10px">⤢ Abrir en ventana grande</button>
+      <div id="cuerpo">
+        <div>
+          <canvas id="hist"></canvas>
+          <p class="legend" style="text-align:center">Arrastra las líneas del gráfico o escribe los límites.</p>
+          <div class="seg" id="colas" style="margin-top:8px">
+            <button data-cola="dos">Dos colas</button><button data-cola="izq">Cola izquierda ≤</button><button data-cola="der">Cola derecha ≥</button>
+          </div>
+          <div class="fila">
+            <label class="campo" id="cLo">Límite inferior<input id="lo" type="number" step="any"></label>
+            <label class="campo" id="cHi">Límite superior<input id="hi" type="number" step="any"></label>
+            <label class="campo">Certeza %<input id="certPct" type="number" step="any" min="0" max="100"></label>
+          </div>
+          <div class="certBox"><b id="certNum"></b><span id="certTxt"></span></div>
+          <h3>Sensibilidad (correlación de rangos)</h3>
+          <div class="bars" id="sens"></div>
+          <p class="legend">Entre paréntesis: contribución a la varianza.</p>
+          <h3>Tornado (cada entrada ±10 %)</h3>
+          <div class="bars" id="tornado"></div>
+          <p class="legend"><b style="background:var(--neg)"></b>entrada −10 %<b style="background:var(--pos)"></b>entrada +10 %</p>
         </div>
-        <span id="certOut"></span>
-        <h3>Sensibilidad (correlación de rangos)</h3>
-        <div class="bars" id="sens"></div>
-        <p class="legend">Entre paréntesis: contribución a la varianza.</p>
-        <h3>Tornado (cada entrada ±10 %)</h3>
-        <div class="bars" id="tornado"></div>
-        <p class="legend"><b style="background:var(--neg)"></b>entrada −10 %<b style="background:var(--pos)"></b>entrada +10 %</p>
-      </div>
-      <div>
-        <h3>Estadísticas</h3>
-        <table id="stats"></table>
-        <h3>Percentiles</h3>
-        <table id="pcts"></table>
+        <div>
+          <h3>Estadísticas</h3>
+          <table id="stats"></table>
+          <h3>Percentiles</h3>
+          <table id="pcts"></table>
+        </div>
       </div>
     </div>
-  </section>
+  </div>
+
+  <div class="vista solo-panel" id="v-corridas" hidden>
+    <div class="card">
+      <h2>Corridas guardadas</h2>
+      <p class="hint">Cada simulación se guarda dentro del libro. Puedes cambiarle el nombre.</p>
+      <div id="corridas"></div>
+    </div>
+  </div>
 </main>
+<div id="modal" hidden><div class="hoja" id="editor"></div></div>
 
 <script>
 'use strict';
 
 // ---------- Distribuciones ----------
 const DISTS = {
-  triangular:  {label:'Triangular',  params:['Mínimo','Más probable','Máximo']},
-  normal:      {label:'Normal',      params:['Media','Desv. estándar']},
-  uniforme:    {label:'Uniforme',    params:['Mínimo','Máximo']},
-  pert:        {label:'PERT',        params:['Mínimo','Más probable','Máximo']},
-  lognormal:   {label:'Lognormal',   params:['Media','Desv. estándar']},
-  exponencial: {label:'Exponencial', params:['Tasa (λ)']},
-  poisson:     {label:'Poisson',     params:['Lambda (λ)']},
-  binomial:    {label:'Binomial',    params:['Ensayos (n)','Probabilidad (p)']},
-  bernoulli:   {label:'Bernoulli (sí/no)', params:['Probabilidad (p)']},
+  triangular:  {label:'Triangular',  params:['Mínimo','Más probable','Máximo'], icono:'M2 22L16 4L38 22Z'},
+  normal:      {label:'Normal',      params:['Media','Desv. estándar'],         icono:'M2 22C12 22 14 4 20 4C26 4 28 22 38 22Z'},
+  uniforme:    {label:'Uniforme',    params:['Mínimo','Máximo'],                icono:'M6 22V8H34V22Z'},
+  pert:        {label:'PERT',        params:['Mínimo','Más probable','Máximo'], icono:'M2 22C10 22 12 4 17 4C24 4 28 22 38 22Z'},
+  lognormal:   {label:'Lognormal',   params:['Media','Desv. estándar'],         icono:'M2 22C6 22 7 4 11 4C17 4 22 20 38 22Z'},
+  exponencial: {label:'Exponencial', params:['Tasa (λ)'],                       icono:'M4 22V4C8 16 20 21 38 22Z'},
+  poisson:     {label:'Poisson',     params:['Lambda (λ)'],                     icono:'M4 22V14h5v8zM11 22V6h5v16zM18 22V9h5v13zM25 22V15h5v7zM32 22V19h5v3z'},
+  binomial:    {label:'Binomial',    params:['Ensayos (n)','Probabilidad (p)'], icono:'M4 22V17h5v5zM11 22V9h5v13zM18 22V4h5v18zM25 22V9h5v13zM32 22V17h5v5z'},
+  bernoulli:   {label:'Sí / No',     params:['Probabilidad (p)'],               icono:'M8 22V12h9v10zM23 22V5h9v17z'},
 };
 
 // Parámetros sugeridos a partir del valor actual de la celda
@@ -158,7 +241,7 @@ function sugerir(d, v) {
 }
 
 function validar(d, p) {
-  if (p.some(v => !Number.isFinite(v))) return 'tiene parámetros vacíos o no numéricos';
+  if (p.some(v => !Number.isFinite(v))) return 'faltan parámetros o no son números';
   switch (d) {
     case 'normal': if (p[1] <= 0) return 'la desviación estándar debe ser mayor que 0'; break;
     case 'lognormal': if (p[0] <= 0 || p[1] <= 0) return 'la media y la desviación deben ser mayores que 0'; break;
@@ -291,11 +374,39 @@ function fmt(x) {
 }
 function estado(msg, tipo) { $('status').textContent = msg; $('status').className = tipo || ''; }
 const mensaje = e => (e && e.message) || String(e);
+const color = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
 
-// ---------- Modelo (se guarda dentro del libro) ----------
-const CLAVE = 'simulador-riesgo';
-let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: ''};
-let resultado = null, sel = 0, edicion = null, cancelar = false;
+function lienzo(cv) {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr);
+  return {g, W, H};
+}
+// Histograma sencillo, sin ejes: vista previa de distribuciones y simulación en vivo
+function miniHist(cv, valores, n) {
+  const {g, W, H} = lienzo(cv);
+  if (!W || !n) return;
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < n; i++) { if (valores[i] < min) min = valores[i]; if (valores[i] > max) max = valores[i]; }
+  const nb = 36, bins = new Array(nb).fill(0), span = max - min || 1;
+  for (let i = 0; i < n; i++) bins[Math.min(nb - 1, Math.floor((valores[i] - min) / span * nb))]++;
+  const top = Math.max(...bins), m = 6;
+  g.fillStyle = color('--accent');
+  for (let b = 0; b < nb; b++) {
+    const h = (H - 22) * bins[b] / top;
+    g.fillRect(m + (W - 2 * m) * b / nb + .5, H - 16 - h, Math.max(1, (W - 2 * m) / nb - 1), h);
+  }
+  g.fillStyle = color('--muted'); g.font = '10px "Segoe UI", sans-serif'; g.textBaseline = 'bottom';
+  g.textAlign = 'left'; g.fillText(fmt(min), m, H - 2);
+  g.textAlign = 'right'; g.fillText(fmt(max), W - m, H - 2);
+}
+
+// ---------- Estado (se guarda dentro del libro) ----------
+const CLAVE = 'simulador-riesgo', CLAVE_C = 'simulador-riesgo-corridas', MAX_CORRIDAS = 15;
+const COLOR_SUP = '#A9E5A3', COLOR_PRO = '#A8C7FA', OPC_ITER = [500, 1000, 2000, 5000, 10000];
+let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, contador: 0};
+let corridas = [], resultado = null, sel = 0, cancelar = false, selDir = null;
+let cert = {tipo: 'dos', lo: -Infinity, hi: Infinity}, geo = null;
 
 function partir(dir) {
   const i = dir.lastIndexOf('!');
@@ -307,22 +418,29 @@ const rango = (ctx, dir) => { const [h, a] = partir(dir); return ctx.workbook.wo
 const corta = dir => partir(dir)[1];
 
 async function guardar() {
-  await Excel.run(async ctx => { ctx.workbook.settings.add(CLAVE, JSON.stringify(modelo)); await ctx.sync(); });
+  try { await Excel.run(async ctx => { ctx.workbook.settings.add(CLAVE, JSON.stringify(modelo)); await ctx.sync(); }); }
+  catch (e) { estado(mensaje(e), 'err'); }
+}
+async function guardarCorridas() {
+  try { await Excel.run(async ctx => { ctx.workbook.settings.add(CLAVE_C, JSON.stringify(corridas)); await ctx.sync(); }); }
+  catch (e) { estado('No se pudo guardar la corrida: ' + mensaje(e), 'err'); }
 }
 async function cargar() {
   await Excel.run(async ctx => {
-    const s = ctx.workbook.settings.getItemOrNullObject(CLAVE);
-    s.load('value'); await ctx.sync();
-    if (!s.isNullObject) { const m = JSON.parse(s.value); if (m && m.supuestos && m.pronosticos) modelo = m; }
+    const a = ctx.workbook.settings.getItemOrNullObject(CLAVE), b = ctx.workbook.settings.getItemOrNullObject(CLAVE_C);
+    a.load('value'); b.load('value'); await ctx.sync();
+    if (!a.isNullObject) { const m = JSON.parse(a.value); if (m && m.supuestos && m.pronosticos) modelo = {...modelo, ...m}; }
+    if (!b.isNullObject) { const c = JSON.parse(b.value); if (Array.isArray(c)) corridas = c; }
   });
 }
 
+// ---------- Celdas: selección y color ----------
 async function celdaSeleccionada() {
   return Excel.run(async ctx => {
     const r = ctx.workbook.getSelectedRange();
     r.load('address,values,cellCount,rowIndex,columnIndex');
     await ctx.sync();
-    if (r.cellCount !== 1) throw new Error('Selecciona una sola celda.');
+    if (r.cellCount !== 1) throw new Error('Selecciona una sola celda en la hoja.');
     let etiqueta = '';
     if (r.columnIndex > 0) { // el texto más cercano a la izquierda sirve de nombre
       const izq = r.worksheet.getRangeByIndexes(r.rowIndex, 0, 1, r.columnIndex);
@@ -332,100 +450,182 @@ async function celdaSeleccionada() {
     return {celda: r.address, valor: r.values[0][0], etiqueta};
   });
 }
+async function actualizarSeleccion() {
+  try {
+    await Excel.run(async ctx => {
+      const r = ctx.workbook.getSelectedRange(); r.load('address,cellCount'); await ctx.sync();
+      selDir = r.cellCount === 1 ? r.address : null;
+    });
+  } catch { selDir = null; }
+  const c = selDir ? corta(selDir) : null;
+  $('selCelda').textContent = c || 'varias';
+  $('addSup').textContent = c ? `＋ Definir supuesto en ${c}` : '＋ Definir supuesto';
+  $('addPro').textContent = c ? `＋ Definir pronóstico en ${c}` : '＋ Definir pronóstico';
+}
 async function irA(dir) {
   try { await Excel.run(async ctx => { const r = rango(ctx, dir); r.worksheet.activate(); r.select(); await ctx.sync(); }); }
   catch (e) { estado(mensaje(e), 'err'); }
 }
-
-// ---------- Panel: listas y editor ----------
-function pintarListas() {
-  $('supuestos').innerHTML = modelo.supuestos.map((s, i) => `<div class="item">
-      <div class="info" data-ir="${esc(s.celda)}"><b>${esc(s.nombre)}</b><span>${esc(corta(s.celda))} · ${DISTS[s.dist].label} (${s.p.map(fmt).join('; ')})</span></div>
-      <button class="mini" data-edit-sup="${i}">Editar</button><button class="mini" data-del-sup="${i}">✕</button></div>`).join('')
-    || '<p class="hint">Aún no hay supuestos.</p>';
-  $('pronosticos').innerHTML = modelo.pronosticos.map((p, i) => `<div class="item">
-      <div class="info" data-ir="${esc(p.celda)}"><b>${esc(p.nombre)}</b><span>${esc(corta(p.celda))}</span></div>
-      <button class="mini" data-edit-pro="${i}">Editar</button><button class="mini" data-del-pro="${i}">✕</button></div>`).join('')
-    || '<p class="hint">Aún no hay pronósticos.</p>';
+// Pinta la celda y recuerda el color que tenía para devolverlo al quitar la marca
+async function pintar(item, tono) {
+  try {
+    await Excel.run(async ctx => {
+      const f = rango(ctx, item.celda).format.fill;
+      if (item.colorOrig === undefined) { f.load('color'); await ctx.sync(); item.colorOrig = f.color || ''; }
+      f.color = tono; await ctx.sync();
+    });
+  } catch {}
+}
+async function despintar(item) {
+  if (item.colorOrig === undefined) return;
+  try {
+    await Excel.run(async ctx => {
+      const f = rango(ctx, item.celda).format.fill;
+      if (!item.colorOrig || item.colorOrig.toUpperCase() === '#FFFFFF') f.clear(); else f.color = item.colorOrig;
+      await ctx.sync();
+    });
+  } catch {}
+  delete item.colorOrig;
+}
+async function repintarTodo() {
+  for (const s of modelo.supuestos) await (modelo.colorear ? pintar(s, COLOR_SUP) : despintar(s));
+  for (const p of modelo.pronosticos) await (modelo.colorear ? pintar(p, COLOR_PRO) : despintar(p));
 }
 
+// ---------- Vista Modelo ----------
+function vista(v) {
+  for (const x of ['modelo', 'resultados', 'corridas']) $('v-' + x).hidden = x !== v;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.vista === v));
+  if (v === 'resultados' && resultado) actualizarCerteza();
+  if (v === 'corridas') pintarCorridas();
+}
+
+function pintarListas() {
+  const fila = (x, i, t, extra) => `<div class="item">
+      <i class="dot" style="background:var(--${t})"></i>
+      <div class="info" data-ir="${esc(x.celda)}" title="Ir a la celda"><b>${esc(x.nombre)}</b><span>${esc(corta(x.celda))}${extra}</span></div>
+      <button class="mini" data-edit="${t}:${i}">Editar</button><button class="mini" data-del="${t}:${i}" title="Quitar">✕</button></div>`;
+  $('supuestos').innerHTML = modelo.supuestos.map((s, i) => fila(s, i, 'sup', ` · ${DISTS[s.dist].label} (${s.p.map(fmt).join('; ')})`)).join('')
+    || '<p class="vacio">Selecciona una celda en la hoja y pulsa el botón.</p>';
+  $('pronosticos').innerHTML = modelo.pronosticos.map((p, i) => fila(p, i, 'pro', '')).join('')
+    || '<p class="vacio">Selecciona la celda del resultado y pulsa el botón.</p>';
+}
+function pintarOpciones() {
+  $('chips').innerHTML = OPC_ITER.map(n => `<button class="chip${n === modelo.iter ? ' on' : ''}" data-iter="${n}">${n.toLocaleString('es')}</button>`).join('');
+  $('iter').value = modelo.iter; $('semilla').value = modelo.semilla;
+  $('vivo').checked = !!modelo.vivo; $('colorear').checked = !!modelo.colorear;
+}
+
+// ---------- Editor de supuestos y pronósticos ----------
 function abrirEditor(e) {
-  edicion = e;
   const d = e.item, esSup = e.tipo === 'sup';
-  $('editor').hidden = false;
-  $('editor').innerHTML = `<b>${esSup ? 'Supuesto' : 'Pronóstico'} en ${esc(corta(d.celda))}</b>
-    <div class="fila"><label>Nombre<input id="edNombre" value="${esc(d.nombre)}"></label></div>
-    ${esSup ? `<div class="fila"><label>Distribución<select id="edDist">${
-      Object.entries(DISTS).map(([k, v]) => `<option value="${k}"${k === d.dist ? ' selected' : ''}>${v.label}</option>`).join('')
-    }</select></label></div>
-    <div class="fila" id="edParams">${DISTS[d.dist].params.map((lab, j) => `<label>${lab}<input type="number" step="any" data-j="${j}" value="${Number.isFinite(d.p[j]) ? d.p[j] : ''}"></label>`).join('')}</div>` : ''}
-    <div class="fila"><button class="primary" id="edOk">Guardar</button><button id="edNo">Cancelar</button></div>`;
-  $('editor').scrollIntoView({block: 'nearest'});
-  if (esSup) $('edDist').onchange = ev => { d.dist = ev.target.value; d.p = sugerir(d.dist, e.valor); d.nombre = $('edNombre').value; abrirEditor(e); };
+  $('modal').hidden = false;
+  $('editor').innerHTML = `<h2><i class="dot" style="background:var(--${e.tipo})"></i>${esSup ? 'Supuesto de entrada' : 'Pronóstico de salida'}</h2>
+    <p class="hint">Celda ${esc(corta(d.celda))}${typeof e.valor === 'number' ? ' · valor actual ' + fmt(e.valor) : ''}</p>
+    <label class="campo">Nombre<input id="edNombre" value="${esc(d.nombre)}"></label>
+    ${esSup ? `<h3>Distribución</h3>
+    <div class="galeria">${Object.entries(DISTS).map(([k, v]) =>
+      `<button class="dist${k === d.dist ? ' on' : ''}" data-dist="${k}"><svg viewBox="0 0 40 24"><path d="${v.icono}"/></svg>${v.label}</button>`).join('')}</div>
+    <div class="fila" id="edParams">${DISTS[d.dist].params.map((lab, j) =>
+      `<label class="campo">${lab}<input type="number" step="any" data-j="${j}" value="${Number.isFinite(d.p[j]) ? d.p[j] : ''}"></label>`).join('')}</div>
+    <canvas id="previa"></canvas>` : ''}
+    <div id="edErr"></div>
+    <div style="display:flex;gap:8px"><button class="btn primary" id="edOk">Guardar</button><button class="btn" id="edNo">Cancelar</button></div>`;
+
+  const leer = () => { d.p = [...document.querySelectorAll('#edParams input')].map(x => parseFloat(x.value)); };
+  const previa = () => {
+    const err = validar(d.dist, d.p);
+    $('edErr').textContent = err ? 'Revisa los parámetros: ' + err + '.' : '';
+    const rng = mulberry32(1), n = err ? 0 : 4000, v = new Float64Array(n);
+    for (let i = 0; i < n; i++) v[i] = muestrear(d.dist, d.p, rng);
+    miniHist($('previa'), v, n);
+  };
+  if (esSup) {
+    $('editor').querySelectorAll('[data-dist]').forEach(b => b.onclick = () => {
+      d.nombre = $('edNombre').value; d.dist = b.dataset.dist; d.p = sugerir(d.dist, e.valor); abrirEditor(e);
+    });
+    $('edParams').oninput = () => { leer(); previa(); };
+    previa(); requestAnimationFrame(previa);
+  }
   $('edNo').onclick = cerrarEditor;
   $('edOk').onclick = async () => {
     d.nombre = $('edNombre').value.trim() || corta(d.celda);
-    if (esSup) {
-      d.p = [...document.querySelectorAll('#edParams input')].map(x => parseFloat(x.value));
-      const err = validar(d.dist, d.p);
-      if (err) return estado(`Supuesto "${d.nombre}": ${err}.`, 'err');
-    }
+    if (esSup) { leer(); if (validar(d.dist, d.p)) return previa(); }
     const lista = esSup ? modelo.supuestos : modelo.pronosticos;
     if (e.indice === -1) lista.push(d); else lista[e.indice] = d;
     cerrarEditor(); pintarListas(); estado('');
-    try { await guardar(); } catch (er) { estado(mensaje(er), 'err'); }
+    if (modelo.colorear) await pintar(d, esSup ? COLOR_SUP : COLOR_PRO);
+    await guardar();
   };
 }
-function cerrarEditor() { edicion = null; $('editor').hidden = true; $('editor').innerHTML = ''; }
+function cerrarEditor() { $('modal').hidden = true; $('editor').innerHTML = ''; }
 
 async function agregar(tipo) {
   try {
-    const c = await celdaSeleccionada();
-    const lista = tipo === 'sup' ? modelo.supuestos : modelo.pronosticos;
+    const c = await celdaSeleccionada(), esSup = tipo === 'sup';
+    const lista = esSup ? modelo.supuestos : modelo.pronosticos, otra = esSup ? modelo.pronosticos : modelo.supuestos;
+    if (otra.some(x => x.celda === c.celda)) throw new Error(`La celda ${corta(c.celda)} ya está marcada como ${esSup ? 'pronóstico' : 'supuesto'}.`);
+    if (esSup && typeof c.valor !== 'number') throw new Error('El supuesto debe ser una celda con un número.');
     const indice = lista.findIndex(x => x.celda === c.celda);
-    if (tipo === 'sup' && typeof c.valor !== 'number') throw new Error('La celda del supuesto debe contener un número.');
     const item = indice >= 0 ? structuredClone(lista[indice])
-      : tipo === 'sup' ? {celda: c.celda, nombre: c.etiqueta || corta(c.celda), dist: 'triangular', p: sugerir('triangular', c.valor)}
+      : esSup ? {celda: c.celda, nombre: c.etiqueta || corta(c.celda), dist: 'triangular', p: sugerir('triangular', c.valor), valorBase: c.valor}
       : {celda: c.celda, nombre: c.etiqueta || corta(c.celda)};
-    abrirEditor({tipo, indice, item, valor: c.valor});
     estado('');
+    abrirEditor({tipo, indice, item, valor: c.valor});
   } catch (e) { estado(mensaje(e), 'err'); }
 }
 
 function iniciarPanel() {
+  $('nav').onclick = e => e.target.dataset.vista && vista(e.target.dataset.vista);
   $('addSup').onclick = () => agregar('sup');
   $('addPro').onclick = () => agregar('pro');
-  document.addEventListener('click', async ev => {
-    const d = ev.target.closest('[data-ir]') ? ev.target.closest('[data-ir]').dataset : ev.target.dataset;
-    if (d.ir) return irA(d.ir);
-    if (d.editSup !== undefined) return abrirEditor({tipo: 'sup', indice: +d.editSup, item: structuredClone(modelo.supuestos[d.editSup]), valor: modelo.supuestos[d.editSup].p[0]});
-    if (d.editPro !== undefined) return abrirEditor({tipo: 'pro', indice: +d.editPro, item: structuredClone(modelo.pronosticos[d.editPro])});
-    if (d.delSup !== undefined) modelo.supuestos.splice(d.delSup, 1);
-    else if (d.delPro !== undefined) modelo.pronosticos.splice(d.delPro, 1);
-    else return;
-    cerrarEditor(); pintarListas();
-    try { await guardar(); } catch (e) { estado(mensaje(e), 'err'); }
+  $('v-modelo').addEventListener('click', async ev => {
+    const ir = ev.target.closest('[data-ir]');
+    if (ir) return irA(ir.dataset.ir);
+    const d = ev.target.dataset;
+    if (d.iter) { modelo.iter = +d.iter; pintarOpciones(); return guardar(); }
+    if (!d.edit && !d.del) return;
+    const [t, i] = (d.edit || d.del).split(':'), lista = t === 'sup' ? modelo.supuestos : modelo.pronosticos;
+    if (d.edit) return abrirEditor({tipo: t, indice: +i, item: structuredClone(lista[i]), valor: lista[i].valorBase});
+    const [quitado] = lista.splice(i, 1);
+    pintarListas(); await despintar(quitado); await guardar();
   });
-  $('iter').onchange = e => { modelo.iter = +e.target.value; guardar().catch(() => {}); };
-  $('semilla').onchange = e => { modelo.semilla = e.target.value; guardar().catch(() => {}); };
+  $('iter').onchange = e => {
+    const n = Math.round(+e.target.value);
+    modelo.iter = n >= 10 && n <= 100000 ? n : 1000;
+    pintarOpciones(); guardar();
+  };
+  $('semilla').onchange = e => { modelo.semilla = e.target.value; guardar(); };
+  $('vivo').onchange = e => { modelo.vivo = e.target.checked; guardar(); };
+  $('colorear').onchange = async e => { modelo.colorear = e.target.checked; await repintarTodo(); guardar(); };
   $('run').onclick = correr;
   $('cancel').onclick = () => { cancelar = true; };
   $('ventana').onclick = abrirVentana;
+  $('modal').onclick = e => { if (e.target === $('modal')) cerrarEditor(); };
+  $('corridas').addEventListener('click', e => {
+    const d = e.target.dataset;
+    if (d.ver !== undefined) { resultado = corridas[d.ver]; sel = 0; pintarResultados(); vista('resultados'); }
+    if (d.borrar !== undefined) { corridas.splice(d.borrar, 1); pintarCorridas(); guardarCorridas(); }
+  });
+  $('corridas').addEventListener('change', e => {
+    if (e.target.dataset.nombre === undefined) return;
+    corridas[e.target.dataset.nombre].nombre = e.target.value.trim() || 'Corrida';
+    guardarCorridas();
+  });
 }
 
 // ---------- Simulación sobre la hoja ----------
-const LOTE = 200;
-
-async function simular() {
+async function simular(avance) {
   const sup = modelo.supuestos, pro = modelo.pronosticos, n = modelo.iter, k = sup.length, m = pro.length;
-  if (!k) throw new Error('Agrega al menos un supuesto.');
-  if (!m) throw new Error('Agrega al menos un pronóstico.');
-  for (const s of sup) { const err = validar(s.dist, s.p); if (err) throw new Error(`Supuesto "${s.nombre}": ${err}.`); }
+  if (!k) throw new Error('Define al menos un supuesto.');
+  if (!m) throw new Error('Define al menos un pronóstico.');
+  for (const s of sup) { const err = validar(s.dist, s.p); if (err) throw new Error(`Supuesto «${s.nombre}»: ${err}.`); }
 
   const rng = modelo.semilla !== '' && Number.isFinite(+modelo.semilla) ? mulberry32(+modelo.semilla) : Math.random;
   const ins = sup.map(() => new Float64Array(n)), outs = pro.map(() => new Float64Array(n));
   for (let t = 0; t < n; t++) for (let i = 0; i < k; i++) ins[i][t] = muestrear(sup[i].dist, sup[i].p, rng);
   const caso = t => ins.map(a => a[t]);
+  const vivo = !!modelo.vivo;
 
   let originales, base, manual;
   await Excel.run(async ctx => {
@@ -441,7 +641,7 @@ async function simular() {
   // Escribe cada caso en las celdas de entrada y lee los pronósticos ya recalculados
   const evaluar = casos => Excel.run(async ctx => {
     const rs = sup.map(s => rango(ctx, s.celda)), lecturas = [];
-    ctx.application.suspendScreenUpdatingUntilNextSync();
+    if (!vivo) ctx.application.suspendScreenUpdatingUntilNextSync();
     for (const c of casos) {
       for (let i = 0; i < k; i++) rs[i].values = [[c[i]]];
       if (manual) ctx.application.calculate('Recalculate');
@@ -450,7 +650,7 @@ async function simular() {
     await ctx.sync();
     return lecturas.map(fila => fila.map((r, j) => {
       const v = r.values[0][0];
-      if (typeof v !== 'number') throw new Error(`El pronóstico "${pro[j].nombre}" dio un valor no numérico (${v === '' ? 'celda vacía' : v}).`);
+      if (typeof v !== 'number') throw new Error(`El pronóstico «${pro[j].nombre}» dio un valor no numérico (${v === '' ? 'celda vacía' : v}).`);
       return v;
     }));
   });
@@ -458,23 +658,22 @@ async function simular() {
   try {
     // La primera iteración se evalúa sola y sirve para comprobar que la lectura por lotes es fiable
     const r0 = (await evaluar([caso(0)]))[0];
-    let lote = LOTE;
+    let lote = vivo ? 10 : 200;
     for (let t = 0; t < n;) {
-      if (cancelar) throw new Error('Simulación cancelada.');
+      if (cancelar) throw new Error('Simulación detenida.');
       const hasta = Math.min(n, t + lote), casos = [];
       for (let u = t; u < hasta; u++) casos.push(caso(u));
       const res = await evaluar(casos);
       if (t === 0 && lote > 1 && res[0].some((v, j) => Math.abs(v - r0[j]) > 1e-9 * Math.max(1, Math.abs(r0[j])))) { lote = 1; continue; }
       for (let u = t; u < hasta; u++) for (let j = 0; j < m; j++) outs[j][u] = res[u - t][j];
       t = hasta;
-      estado(`Simulando… ${t.toLocaleString('es')} de ${n.toLocaleString('es')}`);
+      avance(t, n, outs[0]);
     }
 
     // Tornado: caso base (valores actuales de la hoja) y cada entrada ±10 %
-    const numericos = base.map((v, i) => (typeof v === 'number' && v !== 0 ? i : -1)).filter(i => i >= 0);
     let tornado = [], baseOut = null;
-    if (numericos.length === k || base.every(v => typeof v === 'number')) {
-      const casos = [base];
+    if (base.every(v => typeof v === 'number')) {
+      const numericos = base.map((v, i) => (v !== 0 ? i : -1)).filter(i => i >= 0), casos = [base];
       for (const i of numericos) for (const f of [0.9, 1.1]) { const b = base.slice(); b[i] = base[i] * f; casos.push(b); }
       const res = [];
       for (let a = 0; a < casos.length; a += lote) res.push(...await evaluar(casos.slice(a, a + lote)));
@@ -505,26 +704,61 @@ async function simular() {
 async function correr() {
   cancelar = false;
   $('run').disabled = true; $('cancel').hidden = false;
-  estado('Simulando…');
+  $('progreso').hidden = false; $('progreso').firstElementChild.style.width = '0';
+  $('vivoCv').hidden = !modelo.vivo;
+  estado('Preparando…');
   try {
     const t0 = performance.now();
-    resultado = await simular(); sel = 0;
-    pintarResultados();
-    estado(`Listo: ${resultado.n.toLocaleString('es')} iteraciones en ${dec((performance.now() - t0) / 1000, 1)} s.`, 'ok');
+    const res = await simular((t, n, serie) => {
+      $('progreso').firstElementChild.style.width = (100 * t / n) + '%';
+      estado(`Simulando… ${t.toLocaleString('es')} de ${n.toLocaleString('es')}`);
+      if (modelo.vivo) miniHist($('vivoCv'), serie, t);
+    });
+    modelo.contador = (modelo.contador || 0) + 1;
+    res.nombre = 'Corrida ' + modelo.contador; res.fecha = new Date().toISOString();
+    resultado = res; sel = 0;
+    corridas.unshift(compactar(res, 1001));
+    corridas.length = Math.min(corridas.length, MAX_CORRIDAS);
+    estado(`Listo: ${res.n.toLocaleString('es')} iteraciones en ${dec((performance.now() - t0) / 1000, 1)} s.`, 'ok');
+    pintarResultados(); vista('resultados');
+    await guardar(); await guardarCorridas();
   } catch (e) { estado(mensaje(e), 'err'); }
-  $('run').disabled = false; $('cancel').hidden = true;
+  $('run').disabled = false; $('cancel').hidden = true; $('progreso').hidden = true; $('vivoCv').hidden = true;
+}
+
+// Reduce cada pronóstico a un número fijo de puntos ordenados (para guardar o enviar a la ventana)
+function compactar(res, maxPts) {
+  return {...res, salidas: res.salidas.map(S => {
+    const d = S.datos, datos = [];
+    if (d.length <= maxPts) for (const v of d) datos.push(+v.toPrecision(8));
+    else for (let i = 0; i < maxPts; i++) datos.push(+d[Math.round(i * (d.length - 1) / (maxPts - 1))].toPrecision(8));
+    return {...S, datos};
+  })};
+}
+
+function pintarCorridas() {
+  $('corridas').innerHTML = corridas.map((c, i) => {
+    const f = new Date(c.fecha), s = c.salidas[0];
+    return `<div class="item"><div class="info" style="cursor:default">
+      <input class="nombre" data-nombre="${i}" value="${esc(c.nombre)}">
+      <span>${f.toLocaleDateString('es', {day: 'numeric', month: 'short'})} ${f.toLocaleTimeString('es', {hour: '2-digit', minute: '2-digit'})} · ${c.n.toLocaleString('es')} it. · ${esc(s.nombre)}: media ${fmt(s.stats.media)}</span></div>
+      <button class="mini" data-ver="${i}">Ver</button><button class="mini" data-borrar="${i}" title="Borrar">✕</button></div>`;
+  }).join('') || '<p class="vacio">Aún no hay corridas guardadas.</p>';
 }
 
 // ---------- Resultados (panel y ventana grande) ----------
 function pintarResultados() {
-  $('results').hidden = false;
+  $('sinRes').hidden = true; $('results').hidden = false;
   if (sel >= resultado.salidas.length) sel = 0;
-  $('tabs').innerHTML = resultado.salidas.map((s, i) => `<button data-tab="${i}" class="${i === sel ? 'on' : ''}">${esc(s.nombre)}</button>`).join('');
   const S = resultado.salidas[sel], r = S.stats, fila = (a, b) => `<tr><td>${a}</td><td>${b}</td></tr>`;
+  $('tituloRes').textContent = resultado.nombre || 'Resultados';
+  $('subRes').textContent = `${resultado.n.toLocaleString('es')} iteraciones` + (resultado.fecha ? ' · ' + new Date(resultado.fecha).toLocaleString('es', {dateStyle: 'medium', timeStyle: 'short'}) : '');
+  $('tabs').innerHTML = resultado.salidas.length > 1
+    ? resultado.salidas.map((s, i) => `<button class="chip${i === sel ? ' on' : ''}" data-tab="${i}">${esc(s.nombre)}</button>`).join('')
+    : `<span class="chip on">${esc(S.nombre)}</span>`;
   $('stats').innerHTML = [
-    ['Iteraciones', r.n.toLocaleString('es')], ['Media', fmt(r.media)], ['Mediana', fmt(r.mediana)],
-    ['Desviación estándar', fmt(r.sd)], ['Varianza', fmt(r.varianza)], ['Coef. de variación', fmt(r.cv)],
-    ['Mínimo', fmt(r.min)], ['Máximo', fmt(r.max)], ['Rango', fmt(r.max - r.min)],
+    ['Media', fmt(r.media)], ['Mediana', fmt(r.mediana)], ['Desviación estándar', fmt(r.sd)], ['Varianza', fmt(r.varianza)],
+    ['Coef. de variación', fmt(r.cv)], ['Mínimo', fmt(r.min)], ['Máximo', fmt(r.max)], ['Rango', fmt(r.max - r.min)],
     ['Asimetría', fmt(r.asim)], ['Curtosis (exceso)', fmt(r.curt)], ['Error estándar de la media', fmt(r.errMedia)],
   ].map(x => fila(x[0], x[1])).join('');
   $('pcts').innerHTML = [1, 5, 10, 25, 50, 75, 90, 95, 99].map(q => fila(q + ' %', fmt(pct(S.datos, q / 100)))).join('');
@@ -542,39 +776,44 @@ function pintarResultados() {
   let gMin = b0, gMax = b0;
   for (const t of tor) { gMin = Math.min(gMin, t.lo, t.hi); gMax = Math.max(gMax, t.lo, t.hi); }
   const pos = x => gMax > gMin ? 100 * (x - gMin) / (gMax - gMin) : 50;
-  const seg = (v, color) => `<i style="left:${Math.min(pos(v), pos(b0))}%;width:${Math.abs(pos(v) - pos(b0))}%;background:var(${color})"></i>`;
+  const seg = (v, tono) => `<i style="left:${Math.min(pos(v), pos(b0))}%;width:${Math.abs(pos(v) - pos(b0))}%;background:var(${tono})"></i>`;
   $('tornado').innerHTML = tor.map(t => `<div class="bar"><span class="nm" title="${esc(t.nombre)}">${esc(t.nombre)}</span>
       <div class="track">${seg(t.lo, '--neg')}${seg(t.hi, '--pos')}<i class="mid" style="left:${pos(b0)}%"></i></div>
       <span class="val" title="de ${fmt(t.lo)} a ${fmt(t.hi)}">±${fmt(Math.abs(t.hi - t.lo) / 2)}</span></div>`).join('')
-    + (tor.length ? `<p class="legend">Caso base: ${fmt(b0)}</p>` : '<p class="hint">No disponible para este pronóstico.</p>');
+    + (tor.length ? `<p class="legend">Caso base: ${fmt(b0)}</p>` : '<p class="vacio">No disponible para este pronóstico.</p>');
   fijarCerteza(90);
 }
+
+// Certeza: dos colas (intervalo), cola izquierda (≤ límite) o cola derecha (≥ límite)
 function fijarCerteza(c) {
-  const s = resultado.salidas[sel].datos, a = (1 - c / 100) / 2;
-  $('lo').value = +pct(s, a).toPrecision(6); $('hi').value = +pct(s, 1 - a).toPrecision(6);
-  $('certPct').value = c;
-  actualizarCerteza(false);
+  const s = resultado.salidas[sel].datos, q = c / 100, r = x => +x.toPrecision(6);
+  if (cert.tipo === 'dos') { cert.lo = r(pct(s, (1 - q) / 2)); cert.hi = r(pct(s, 1 - (1 - q) / 2)); }
+  else if (cert.tipo === 'izq') { cert.lo = -Infinity; cert.hi = r(pct(s, q)); }
+  else { cert.lo = r(pct(s, 1 - q)); cert.hi = Infinity; }
+  actualizarCerteza();
 }
-function actualizarCerteza(desdeLimites) {
-  const S = resultado.salidas[sel], s = S.datos;
-  const lo = $('lo').value === '' ? -Infinity : parseFloat($('lo').value);
-  const hi = $('hi').value === '' ? Infinity : parseFloat($('hi').value);
-  const p = 100 * contarEntre(s, lo, hi) / s.length;
-  if (desdeLimites) $('certPct').value = +p.toFixed(2);
-  $('certOut').textContent = `P(${lo === -Infinity ? '−∞' : fmt(lo)} ≤ ${S.nombre} ≤ ${hi === Infinity ? '+∞' : fmt(hi)}) = ${dec(p, 2)} %`;
-  histograma(s, lo, hi);
+function actualizarCerteza(origen) {
+  const S = resultado.salidas[sel], s = S.datos, p = 100 * contarEntre(s, cert.lo, cert.hi) / s.length;
+  document.querySelectorAll('#colas button').forEach(b => b.classList.toggle('on', b.dataset.cola === cert.tipo));
+  $('cLo').hidden = cert.tipo === 'izq'; $('cHi').hidden = cert.tipo === 'der';
+  if (origen !== 'lo') $('lo').value = Number.isFinite(cert.lo) ? cert.lo : '';
+  if (origen !== 'hi') $('hi').value = Number.isFinite(cert.hi) ? cert.hi : '';
+  if (origen !== 'pct') $('certPct').value = +p.toFixed(2);
+  $('certNum').textContent = dec(p, 2) + ' %';
+  $('certTxt').textContent = cert.tipo === 'izq' ? `Probabilidad de que ${S.nombre} ≤ ${fmt(cert.hi)}`
+    : cert.tipo === 'der' ? `Probabilidad de que ${S.nombre} ≥ ${fmt(cert.lo)}`
+    : `Probabilidad de que ${S.nombre} esté entre ${fmt(cert.lo)} y ${fmt(cert.hi)}`;
+  histograma(s);
 }
-function histograma(s, lo, hi) {
-  const cv = $('hist'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, Hh = cv.clientHeight;
+function histograma(s) {
+  const cv = $('hist'), {g, W, H} = lienzo(cv);
   if (!W) return;
-  cv.width = W * dpr; cv.height = Hh * dpr;
-  const g = cv.getContext('2d'); g.scale(dpr, dpr);
-  const css = getComputedStyle(document.documentElement), col = k => css.getPropertyValue(k).trim();
-  const mL = 40, mR = 8, mT = 8, mB = 24, pw = W - mL - mR, ph = Hh - mT - mB;
+  const mL = 40, mR = 10, mT = 14, mB = 24, pw = W - mL - mR, ph = H - mT - mB;
   const min = s[0], max = s[s.length - 1], span = max - min || 1, nb = W < 420 ? 30 : 50, bins = new Array(nb).fill(0);
   for (let i = 0; i < s.length; i++) bins[Math.min(nb - 1, Math.floor((s[i] - min) / span * nb))]++;
-  const top = Math.max(...bins);
-  g.font = '10px "Segoe UI", sans-serif'; g.fillStyle = col('--muted'); g.strokeStyle = col('--line'); g.lineWidth = 1;
+  const top = Math.max(...bins), xDe = v => mL + pw * Math.min(1, Math.max(0, (v - min) / span));
+  geo = {mL, pw, min, span};
+  g.font = '10px "Segoe UI", sans-serif'; g.fillStyle = color('--muted'); g.strokeStyle = color('--line'); g.lineWidth = 1;
   g.textAlign = 'right'; g.textBaseline = 'middle';
   for (let k = 0; k <= 4; k++) {
     const y = mT + ph - ph * k / 4;
@@ -583,14 +822,22 @@ function histograma(s, lo, hi) {
   }
   for (let b = 0; b < nb; b++) {
     const centro = min + span * (b + .5) / nb, h = ph * bins[b] / top;
-    g.fillStyle = centro >= lo && centro <= hi ? col('--accent') : col('--accent-soft');
+    g.fillStyle = centro >= cert.lo && centro <= cert.hi ? color('--accent') : color('--accent-soft');
     g.fillRect(mL + pw * b / nb + .5, mT + ph - h, Math.max(1, pw / nb - 1), h);
   }
-  g.fillStyle = col('--muted'); g.textBaseline = 'top';
+  g.fillStyle = color('--muted'); g.textBaseline = 'top';
   const marcas = W < 420 ? 2 : 4;
   for (let k = 0; k <= marcas; k++) {
     g.textAlign = k === 0 ? 'left' : k === marcas ? 'right' : 'center';
     g.fillText(fmt(min + span * k / marcas), mL + pw * k / marcas, mT + ph + 6);
+  }
+  // Líneas de los límites, con un tirador arriba para arrastrarlas
+  g.fillStyle = g.strokeStyle = color('--neg'); g.lineWidth = 2;
+  for (const v of [cert.lo, cert.hi]) {
+    if (!Number.isFinite(v)) continue;
+    const x = xDe(v);
+    g.beginPath(); g.moveTo(x, mT - 4); g.lineTo(x, mT + ph); g.stroke();
+    g.beginPath(); g.moveTo(x - 6, 1); g.lineTo(x + 6, 1); g.lineTo(x, mT - 2); g.closePath(); g.fill();
   }
 }
 function iniciarResultados() {
@@ -598,34 +845,55 @@ function iniciarResultados() {
     if (e.target.dataset.tab === undefined) return;
     sel = +e.target.dataset.tab; pintarResultados();
   });
-  $('lo').oninput = $('hi').oninput = () => resultado && actualizarCerteza(true);
-  $('certPct').oninput = e => { const c = parseFloat(e.target.value); if (resultado && c >= 0 && c <= 100) fijarCerteza(c); };
-  window.addEventListener('resize', () => resultado && actualizarCerteza(false));
+  $('colas').onclick = e => {
+    if (!e.target.dataset.cola || !resultado) return;
+    cert.tipo = e.target.dataset.cola; fijarCerteza(90);
+  };
+  const leer = v => (v === '' || !Number.isFinite(parseFloat(v)) ? null : parseFloat(v));
+  $('lo').oninput = e => { if (!resultado) return; const v = leer(e.target.value); cert.lo = v === null ? -Infinity : v; actualizarCerteza('lo'); };
+  $('hi').oninput = e => { if (!resultado) return; const v = leer(e.target.value); cert.hi = v === null ? Infinity : v; actualizarCerteza('hi'); };
+  $('certPct').oninput = e => {
+    const texto = e.target.value, c = parseFloat(texto);
+    if (resultado && c >= 0 && c <= 100) { fijarCerteza(c); e.target.value = texto; }
+  };
+  window.addEventListener('resize', () => resultado && !$('v-resultados').hidden && histograma(resultado.salidas[sel].datos));
+
+  // Arrastrar los límites sobre el histograma
+  const cv = $('hist');
+  let lado = null;
+  const valorEn = ev => {
+    const x = ev.clientX - cv.getBoundingClientRect().left;
+    return +(geo.min + geo.span * Math.min(1, Math.max(0, (x - geo.mL) / geo.pw))).toPrecision(5);
+  };
+  const mover = ev => {
+    const v = valorEn(ev);
+    if (lado === 'lo') cert.lo = Math.min(v, cert.hi); else cert.hi = Math.max(v, cert.lo);
+    actualizarCerteza();
+  };
+  cv.addEventListener('pointerdown', ev => {
+    if (!resultado || !geo) return;
+    const v = valorEn(ev);
+    lado = cert.tipo === 'izq' ? 'hi' : cert.tipo === 'der' ? 'lo' : Math.abs(v - cert.lo) <= Math.abs(v - cert.hi) ? 'lo' : 'hi';
+    cv.setPointerCapture(ev.pointerId); mover(ev);
+  });
+  cv.addEventListener('pointermove', ev => { if (lado) mover(ev); });
+  const soltar = () => { lado = null; };
+  cv.addEventListener('pointerup', soltar); cv.addEventListener('pointercancel', soltar);
 }
 
 // ---------- Ventana grande ----------
-const MAX_VENTANA = 5000; // puntos por pronóstico que se envían a la ventana
-
-function compacto() {
-  return JSON.stringify({n: resultado.n, sel, salidas: resultado.salidas.map(S => {
-    const d = S.datos, paso = Math.max(1, (d.length - 1) / (MAX_VENTANA - 1)), datos = [];
-    if (d.length <= MAX_VENTANA) for (const v of d) datos.push(+v.toPrecision(8));
-    else for (let i = 0; i < MAX_VENTANA; i++) datos.push(+d[Math.round(i * paso)].toPrecision(8));
-    return {...S, datos};
-  })});
-}
 function abrirVentana() {
   if (!resultado) return;
   const url = location.href.split(/[?#]/)[0] + '?dialogo=1';
   Office.context.ui.displayDialogAsync(url, {height: 85, width: 75}, res => {
-    if (res.status !== Office.AsyncResultStatus.Succeeded) return estado('No se pudo abrir la ventana: ' + res.error.message, 'err');
+    if (res.status !== Office.AsyncResultStatus.Succeeded) return;
     const dlg = res.value;
-    dlg.addEventHandler(Office.EventType.DialogMessageReceived, () => dlg.messageChild(compacto()));
+    dlg.addEventHandler(Office.EventType.DialogMessageReceived, () => dlg.messageChild(JSON.stringify({...compactar(resultado, 5000), sel})));
   });
 }
 function iniciarVentana() {
   document.body.classList.add('dlg');
-  $('tituloRes').textContent = 'Resultados de la simulación';
+  $('v-resultados').hidden = false;
   Office.context.ui.addHandlerAsync(Office.EventType.DialogParentMessageReceived, arg => {
     resultado = JSON.parse(arg.message); sel = resultado.sel || 0;
     pintarResultados();
@@ -636,11 +904,14 @@ function iniciarVentana() {
 iniciarResultados();
 Office.onReady(async info => {
   if (new URLSearchParams(location.search).has('dialogo')) return iniciarVentana();
-  if (info.host !== Office.HostType.Excel) { $('aviso').hidden = false; return; }
+  if (info.host !== Office.HostType.Excel) { $('aviso').hidden = false; $('v-modelo').hidden = true; return; }
   iniciarPanel();
   try { await cargar(); } catch (e) { estado(mensaje(e), 'err'); }
-  $('iter').value = modelo.iter; $('semilla').value = modelo.semilla;
-  pintarListas();
+  pintarListas(); pintarOpciones();
+  try {
+    await Excel.run(async ctx => { ctx.workbook.onSelectionChanged.add(actualizarSeleccion); await ctx.sync(); });
+  } catch {}
+  actualizarSeleccion();
 });
 </script>
 </body>
