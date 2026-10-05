@@ -364,6 +364,29 @@ function contarEntre(s, lo, hi) {
   return cota(hi, true) - cota(lo, false);
 }
 
+// Inversa de la normal estándar (aproximación de Acklam)
+function invNormal(p) {
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  if (p < 0.02425) { const q = Math.sqrt(-2 * Math.log(p)); return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+  if (p > 1 - 0.02425) return -invNormal(1 - p);
+  const q = p - 0.5, r = q * q;
+  return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+}
+// Precisión de la media con las primeras t iteraciones: semiancho del intervalo de confianza y si cumple el error pedido
+function precision(serie, t, conf, err) {
+  let m = 0, m2 = 0;
+  for (let i = 0; i < t; i++) m += serie[i];
+  m /= t;
+  for (let i = 0; i < t; i++) m2 += (serie[i] - m) * (serie[i] - m);
+  const sd = Math.sqrt(m2 / (t - 1)), z = invNormal(1 - (1 - conf / 100) / 2), mitad = z * sd / Math.sqrt(t);
+  const rel = m !== 0 ? 100 * mitad / Math.abs(m) : Infinity, objetivo = Number.isFinite(err);
+  return {conf, err: objetivo ? err : null, mitad, rel, ok: objetivo ? rel <= err : null,
+    nReq: objetivo && m !== 0 ? Math.ceil(Math.pow(z * sd / (err / 100 * Math.abs(m)), 2)) : null};
+}
+
 // ---------- Utilidades ----------
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -507,7 +530,7 @@ function pintarListas() {
       <button class="mini" data-edit="${t}:${i}">Editar</button><button class="mini" data-del="${t}:${i}" title="Quitar">✕</button></div>`;
   $('supuestos').innerHTML = modelo.supuestos.map((s, i) => fila(s, i, 'sup', ` · ${DISTS[s.dist].label} (${s.p.map(fmt).join('; ')})`)).join('')
     || '<p class="vacio">Selecciona una celda en la hoja y pulsa el botón.</p>';
-  $('pronosticos').innerHTML = modelo.pronosticos.map((p, i) => fila(p, i, 'pro', '')).join('')
+  $('pronosticos').innerHTML = modelo.pronosticos.map((p, i) => fila(p, i, 'pro', p.prec ? ` · confianza ${fmt(p.prec.conf)} %, error ± ${fmt(p.prec.err)} %` : '')).join('')
     || '<p class="vacio">Selecciona la celda del resultado y pulsa el botón.</p>';
 }
 function pintarOpciones() {
@@ -528,7 +551,15 @@ function abrirEditor(e) {
       `<button class="dist${k === d.dist ? ' on' : ''}" data-dist="${k}"><svg viewBox="0 0 40 24"><path d="${v.icono}"/></svg>${v.label}</button>`).join('')}</div>
     <div class="fila" id="edParams">${DISTS[d.dist].params.map((lab, j) =>
       `<label class="campo">${lab}<input type="number" step="any" data-j="${j}" value="${Number.isFinite(d.p[j]) ? d.p[j] : ''}"></label>`).join('')}</div>
-    <canvas id="previa"></canvas>` : ''}
+    <canvas id="previa"></canvas>` : `
+    <label class="sw"><input type="checkbox" id="edPrec"${d.prec ? ' checked' : ''}><i></i>Controlar la precisión de la media</label>
+    <div id="edPrecCampos"${d.prec ? '' : ' hidden'}>
+      <div class="fila">
+        <label class="campo">Confianza %<input id="edConf" type="number" step="any" value="${d.prec ? d.prec.conf : 95}"></label>
+        <label class="campo">Error ± %<input id="edErrPct" type="number" step="any" value="${d.prec ? d.prec.err : 1}"></label>
+      </div>
+      <p class="hint" style="margin-top:8px">La simulación se detiene cuando la media queda dentro de ese error con esa confianza, o al llegar al máximo de iteraciones.</p>
+    </div>`}
     <div id="edErr"></div>
     <div style="display:flex;gap:8px"><button class="btn primary" id="edOk">Guardar</button><button class="btn" id="edNo">Cancelar</button></div>`;
 
@@ -547,10 +578,16 @@ function abrirEditor(e) {
     $('edParams').oninput = () => { leer(); previa(); };
     previa(); requestAnimationFrame(previa);
   }
+  else $('edPrec').onchange = ev => { $('edPrecCampos').hidden = !ev.target.checked; };
   $('edNo').onclick = cerrarEditor;
   $('edOk').onclick = async () => {
     d.nombre = $('edNombre').value.trim() || corta(d.celda);
     if (esSup) { leer(); if (validar(d.dist, d.p)) return previa(); }
+    else if ($('edPrec').checked) {
+      const conf = parseFloat($('edConf').value), err = parseFloat($('edErrPct').value);
+      if (!(conf >= 50 && conf < 100) || !(err > 0)) { $('edErr').textContent = 'La confianza debe estar entre 50 y 99,99 y el error debe ser mayor que 0.'; return; }
+      d.prec = {conf, err};
+    } else delete d.prec;
     const lista = esSup ? modelo.supuestos : modelo.pronosticos;
     if (e.indice === -1) lista.push(d); else lista[e.indice] = d;
     cerrarEditor(); pintarListas(); estado('');
@@ -659,7 +696,9 @@ async function simular(avance) {
     // La primera iteración se evalúa sola y sirve para comprobar que la lectura por lotes es fiable
     const r0 = (await evaluar([caso(0)]))[0];
     let lote = vivo ? 10 : 200;
-    for (let t = 0; t < n;) {
+    const conPrec = pro.map((p, j) => (p.prec ? j : -1)).filter(j => j >= 0);
+    let t = 0;
+    while (t < n) {
       if (cancelar) throw new Error('Simulación detenida.');
       const hasta = Math.min(n, t + lote), casos = [];
       for (let u = t; u < hasta; u++) casos.push(caso(u));
@@ -668,7 +707,9 @@ async function simular(avance) {
       for (let u = t; u < hasta; u++) for (let j = 0; j < m; j++) outs[j][u] = res[u - t][j];
       t = hasta;
       avance(t, n, outs[0]);
+      if (t >= 100 && conPrec.length && conPrec.every(j => precision(outs[j], t, pro[j].prec.conf, pro[j].prec.err).ok)) break;
     }
+    const N = t, insN = ins.map(a => a.subarray(0, N)), outsN = outs.map(a => a.subarray(0, N));
 
     // Tornado: caso base (valores actuales de la hoja) y cada entrada ±10 %
     let tornado = [], baseOut = null;
@@ -682,12 +723,13 @@ async function simular(avance) {
     }
 
     return {
-      n,
+      n: N, detenida: N < n,
       salidas: pro.map((p, j) => {
-        const datos = Float64Array.from(outs[j]).sort(), ry = rangos(outs[j]);
+        const datos = Float64Array.from(outsN[j]).sort(), ry = rangos(outsN[j]);
         return {
           nombre: p.nombre, datos, stats: resumen(datos),
-          sens: sup.map((s, i) => ({nombre: s.nombre, r: pearson(rangos(ins[i]), ry)})).sort((a, b) => Math.abs(b.r) - Math.abs(a.r)),
+          sens: sup.map((s, i) => ({nombre: s.nombre, r: pearson(rangos(insN[i]), ry)})).sort((a, b) => Math.abs(b.r) - Math.abs(a.r)),
+          prec: precision(outsN[j], N, p.prec ? p.prec.conf : 95, p.prec ? p.prec.err : NaN),
           base: baseOut ? baseOut[j] : null,
           tornado: tornado.map(x => ({nombre: x.nombre, lo: x.lo[j], hi: x.hi[j]})),
         };
@@ -719,7 +761,7 @@ async function correr() {
     resultado = res; sel = 0;
     corridas.unshift(compactar(res, 1001));
     corridas.length = Math.min(corridas.length, MAX_CORRIDAS);
-    estado(`Listo: ${res.n.toLocaleString('es')} iteraciones en ${dec((performance.now() - t0) / 1000, 1)} s.`, 'ok');
+    estado(`${res.detenida ? 'Precisión alcanzada' : 'Listo'}: ${res.n.toLocaleString('es')} iteraciones en ${dec((performance.now() - t0) / 1000, 1)} s.`, 'ok');
     pintarResultados(); vista('resultados');
     await guardar(); await guardarCorridas();
   } catch (e) { estado(mensaje(e), 'err'); }
@@ -760,7 +802,10 @@ function pintarResultados() {
     ['Media', fmt(r.media)], ['Mediana', fmt(r.mediana)], ['Desviación estándar', fmt(r.sd)], ['Varianza', fmt(r.varianza)],
     ['Coef. de variación', fmt(r.cv)], ['Mínimo', fmt(r.min)], ['Máximo', fmt(r.max)], ['Rango', fmt(r.max - r.min)],
     ['Asimetría', fmt(r.asim)], ['Curtosis (exceso)', fmt(r.curt)], ['Error estándar de la media', fmt(r.errMedia)],
-  ].map(x => fila(x[0], x[1])).join('');
+  ].concat(!S.prec ? [] : [[`Precisión de la media (${fmt(S.prec.conf)} % de confianza)`, `± ${fmt(S.prec.mitad)} (${dec(S.prec.rel, 2)} %)`]],
+    !S.prec || S.prec.err === null ? [] : [[`Error pedido: ± ${fmt(S.prec.err)} %`,
+      S.prec.ok ? '✓ alcanzado' : `✗ no alcanzado${S.prec.nReq ? ` (harían falta ~${S.prec.nReq.toLocaleString('es')} it.)` : ''}`]],
+  ).map(x => fila(x[0], x[1])).join('');
   $('pcts').innerHTML = [1, 5, 10, 25, 50, 75, 90, 95, 99].map(q => fila(q + ' %', fmt(pct(S.datos, q / 100)))).join('');
 
   const sum2 = S.sens.reduce((t, x) => t + x.r * x.r, 0) || 1;
