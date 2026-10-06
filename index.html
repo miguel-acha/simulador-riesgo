@@ -676,10 +676,14 @@ const colNum = l => [...l].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0);
 const colLetra = n => { let l = ''; for (; n > 0; n = Math.floor((n - 1) / 26)) l = String.fromCharCode(65 + (n - 1) % 26) + l; return l; };
 const claveCelda = dir => { const [h, a] = partir(dir); return h + '!' + a.replace(/\$/g, '').toUpperCase(); };
 
+// Rechaza si la promesa no termina en ms milisegundos
+const limite = (ms, promesa) => Promise.race([promesa, new Promise((_, no) => setTimeout(() => no(Object.assign(new Error('Tiempo agotado'), {lento: true})), ms))]);
+
 // Entradas para el tornado: los supuestos y, si se pide, todas las celdas con un número fijo de las que
 // dependen los pronósticos (sus precedentes), como hace el análisis de tornado de Risk Simulator
 async function entradasModelo(sup, pro, originales, base) {
   const vars = new Map();
+  let aviso = '';
   sup.forEach((s, i) => {
     if (typeof base[i] === 'number' && base[i] !== 0) vars.set(claveCelda(s.celda), {celda: s.celda, nombre: s.nombre, base: base[i], orig: originales[i][0][0], sup: true});
   });
@@ -687,7 +691,7 @@ async function entradasModelo(sup, pro, originales, base) {
     const propias = new Set(pro.map(p => claveCelda(p.celda)));
     for (const p of pro) {
       try { // un pronóstico sin precedentes hace fallar la consulta; se ignora
-        await Excel.run(async ctx => {
+        await limite(25000, Excel.run(async ctx => {
           const grupo = rango(ctx, p.celda).getPrecedents();
           grupo.areas.load('items'); await ctx.sync();
           grupo.areas.items.forEach(a => a.areas.load('items/address,items/cellCount')); await ctx.sync();
@@ -706,8 +710,8 @@ async function entradasModelo(sup, pro, originales, base) {
               if (!vars.has(k) && !propias.has(k)) vars.set(k, {celda: dir, base: v, orig: f, fila: f0 + i - 1, col: c0 + j - 1});
             }));
           }
-        });
-      } catch {}
+        }));
+      } catch (e) { if (e.lento) aviso = 'Excel tardó demasiado en rastrear las celdas de entrada del modelo; el tornado usa solo las que alcanzó a encontrar.'; }
     }
   }
   const total = vars.size, lista = [...vars.values()].slice(0, MAX_ENTRADAS);
@@ -729,7 +733,7 @@ async function entradasModelo(sup, pro, originales, base) {
     const [hoja, a1] = partir(v.celda), donde = variasHojas ? hoja + '!' + a1 : a1;
     v.nombre = v.etiqueta ? `${v.etiqueta} (${donde})` : donde;
   }
-  return {lista, total};
+  return {lista, total, aviso};
 }
 
 // ---------- Simulación sobre la hoja ----------
@@ -746,11 +750,19 @@ async function simular(avance) {
   const vivo = !!modelo.vivo;
 
   let originales, base, manual, sondeadas = [];
-  const restaurar = () => Excel.run(async ctx => {
-    sup.forEach((s, i) => { rango(ctx, s.celda).formulas = originales[i]; });
-    for (const v of sondeadas) rango(ctx, v.celda).formulas = [[v.orig]];
-    await ctx.sync();
-  });
+  const restaurar = async () => {
+    for (let intento = 0; ; intento++) {
+      try {
+        return await Excel.run(async ctx => {
+          sup.forEach((s, i) => { rango(ctx, s.celda).formulas = originales[i]; });
+          for (const v of sondeadas) rango(ctx, v.celda).formulas = [[v.orig]];
+          await ctx.sync();
+        });
+      } catch (e) {
+        if (intento >= 2) throw new Error(`Excel no respondió al devolver las celdas de entrada a su valor original (${mensaje(e)}). Revisa esas celdas o deshaz los cambios con Ctrl/⌘+Z.`);
+      }
+    }
+  };
   await Excel.run(async ctx => {
     const rs = sup.map(s => rango(ctx, s.celda));
     rs.forEach(r => r.load('formulas,values'));
@@ -773,7 +785,7 @@ async function simular(avance) {
     await ctx.sync();
     return lecturas.map(fila => fila.map((r, j) => {
       const v = r.values[0][0];
-      if (typeof v !== 'number') throw new Error(`El pronóstico «${pro[j].nombre}» dio un valor no numérico (${v === '' ? 'celda vacía' : v}).`);
+      if (typeof v !== 'number') throw Object.assign(new Error(`El pronóstico «${pro[j].nombre}» dio un valor no numérico (${v === '' ? 'celda vacía' : v}).`), {delModelo: true});
       return v;
     }));
   });
@@ -788,7 +800,12 @@ async function simular(avance) {
       if (cancelar) throw new Error('Simulación detenida.');
       const hasta = Math.min(n, t + lote), casos = [];
       for (let u = t; u < hasta; u++) casos.push(caso(u));
-      const res = await evaluar(casos);
+      // Si Excel tarda o corta la petición (Timeout), se reintenta con lotes más pequeños
+      const ini = performance.now();
+      let res;
+      try { res = await evaluar(casos); }
+      catch (e) { if (e.delModelo || lote <= 1) throw e; lote = Math.max(1, lote >> 2); continue; }
+      if (performance.now() - ini > 4000 && lote > 10) lote = Math.max(10, lote >> 1);
       if (t === 0 && lote > 1 && res[0].some((v, j) => Math.abs(v - r0[j]) > 1e-9 * Math.max(1, Math.abs(r0[j])))) { lote = 1; continue; }
       for (let u = t; u < hasta; u++) for (let j = 0; j < m; j++) outs[j][u] = res[u - t][j];
       t = hasta;
@@ -818,31 +835,42 @@ async function simular(avance) {
       return grupos.map(({v, xs}) => (v ? xs : [0]).map(() => lect[q++].map(r => (typeof r.values[0][0] === 'number' ? r.values[0][0] : NaN))));
     });
     const porTandas = async (lista, niveles, guardarEn, texto) => {
-      const tam = Math.max(1, Math.floor(lote / niveles.length));
-      for (let a = 0; a < lista.length; a += tam) {
+      let tam = Math.max(1, Math.floor(Math.min(lote, 60) / niveles.length));
+      for (let a = 0; a < lista.length;) {
         if (cancelar) throw new Error('Simulación detenida.');
         estado(`${texto} ${a.toLocaleString('es')} de ${lista.length.toLocaleString('es')} entradas`);
-        const tanda = lista.slice(a, a + tam);
-        const res = await sondear(tanda.map(v => ({v, xs: niveles.map(f => v.base * (1 + f / 100))})));
+        const tanda = lista.slice(a, a + tam), ini = performance.now();
+        let res;
+        try { res = await sondear(tanda.map(v => ({v, xs: niveles.map(f => v.base * (1 + f / 100))}))); }
+        catch (e) { if (tam <= 1) throw e; tam = Math.max(1, tam >> 2); continue; }
+        if (performance.now() - ini > 4000 && tam > 1) tam = Math.max(1, tam >> 1);
         tanda.forEach((v, i) => guardarEn(v, res[i]));
+        a += tanda.length;
       }
     };
 
-    await restaurar();
-    estado('Buscando las celdas de entrada del modelo…');
-    const ent = await entradasModelo(sup, pro, originales, base);
-    sondeadas = ent.lista;
-    const baseOut = (await sondear([{v: null}]))[0][0];
     const extremos = [NIV[0], NIV[NIV.length - 1]], medios = NIV.slice(1, -1), fin = Number.isFinite;
-    await porTandas(sondeadas, extremos, (v, r) => { v.lo = r[0]; v.hi = r[1]; }, 'Analizando sensibilidad…');
-    const afecta = j => sondeadas.filter(v => fin(baseOut[j]) && fin(v.lo[j]) && fin(v.hi[j]) && (v.lo[j] !== baseOut[j] || v.hi[j] !== baseOut[j]))
+    let baseOut = pro.map(() => NaN), total = 0, aviso = '';
+    const afecta = j => sondeadas.filter(v => v.lo && fin(baseOut[j]) && fin(v.lo[j]) && fin(v.hi[j]) && (v.lo[j] !== baseOut[j] || v.hi[j] !== baseOut[j]))
       .sort((a, b) => Math.abs(b.hi[j] - b.lo[j]) - Math.abs(a.hi[j] - a.lo[j]));
-    // Los niveles intermedios solo hacen falta para las entradas que se dibujan en la araña
-    const enArana = [...new Set(pro.flatMap((p, j) => afecta(j).slice(0, PALETA.length)))];
-    await porTandas(enArana, medios, (v, r) => { v.mid = r; }, 'Calculando el gráfico de araña…');
+    try {
+      await restaurar();
+      estado('Buscando las celdas de entrada del modelo…');
+      const ent = await entradasModelo(sup, pro, originales, base);
+      sondeadas = ent.lista; total = ent.total; aviso = ent.aviso;
+      baseOut = (await sondear([{v: null}]))[0][0];
+      await porTandas(sondeadas, extremos, (v, r) => { v.lo = r[0]; v.hi = r[1]; }, 'Analizando sensibilidad…');
+      // Los niveles intermedios solo hacen falta para las entradas que se dibujan en la araña
+      const enArana = [...new Set(pro.flatMap((p, j) => afecta(j).slice(0, PALETA.length)))];
+      await porTandas(enArana, medios, (v, r) => { v.mid = r; }, 'Calculando el gráfico de araña…');
+    } catch (e) {
+      // La simulación ya terminó: se entregan sus resultados con el tornado que se haya alcanzado a calcular
+      if (cancelar) throw e;
+      aviso = `El análisis de tornado quedó incompleto (${mensaje(e)}).`;
+    }
 
     return {
-      n: N, pedidas: n, detenida: N < n, entradas: sondeadas.length, entradasTotal: ent.total,
+      n: N, pedidas: n, detenida: N < n, entradas: sondeadas.filter(v => v.lo).length, entradasTotal: total, aviso,
       salidas: pro.map((p, j) => {
         const datos = Float64Array.from(outsN[j]).sort(), ry = rangos(outsN[j]);
         return {
@@ -882,7 +910,7 @@ async function correr() {
     corridas.length = Math.min(corridas.length, MAX_CORRIDAS);
     const seg = dec((performance.now() - t0) / 1000, 1);
     estado(res.detenida ? `Se detuvo en ${res.n.toLocaleString('es')} de ${res.pedidas.toLocaleString('es')} iteraciones (${seg} s) porque ya se alcanzó la precisión pedida en los pronósticos. Para correrlas todas, apaga «Detener antes de completar las iteraciones…» en Simulación.`
-      : `Listo: ${res.n.toLocaleString('es')} iteraciones en ${seg} s.`, 'ok');
+      : `Listo: ${res.n.toLocaleString('es')} iteraciones en ${seg} s.` + (res.aviso ? ' ' + res.aviso : ''), 'ok');
     pintarResultados(); vista('resultados');
     await guardar(); await guardarCorridas();
   } catch (e) { estado(mensaje(e), 'err'); }
