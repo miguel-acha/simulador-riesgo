@@ -827,7 +827,8 @@ async function simular(avance) {
   const caso = t => ins.map(a => a[t]);
   const vivo = !!modelo.vivo, fin = Number.isFinite;
   const detenido = () => Object.assign(new Error('Simulación detenida.'), {detenida: true});
-  const noNumerico = (j, v) => Object.assign(new Error(`El pronóstico «${pro[j].nombre}» dio un valor no numérico (${v === '' ? 'celda vacía' : v}).`), {delModelo: true});
+  const errorVisto = pro.map(() => null); // último valor no numérico que devolvió Excel en cada pronóstico
+  const limpios = (a, t) => a.subarray(0, t).filter(fin);
 
   let originales, base, manual, porRestaurar = [], entradas = [], motor = null;
   const restaurar = async () => {
@@ -876,7 +877,7 @@ async function simular(avance) {
     await ctx.sync();
     return lecturas.map(fila => fila.map((r, j) => {
       const v = r.values[0][0];
-      if (typeof v !== 'number') throw noNumerico(j, v);
+      if (typeof v !== 'number') { errorVisto[j] = v; return NaN; } // se excluye de las estadísticas
       return v;
     }));
   });
@@ -886,7 +887,7 @@ async function simular(avance) {
     const r0 = (await evaluar([caso(0)]))[0];
     let lote = vivo ? 10 : 200, t = 0;
     const conPrec = modelo.detenerPrec ? pro.map((p, j) => (p.prec ? j : -1)).filter(j => j >= 0) : [];
-    const alcanzada = () => t >= 100 && conPrec.length && conPrec.every(j => precision(outs[j], t, pro[j].prec.conf, pro[j].prec.err).ok);
+    const alcanzada = () => t >= 100 && conPrec.length && conPrec.every(j => { const v = limpios(outs[j], t); return v.length >= 100 && precision(v, v.length, pro[j].prec.conf, pro[j].prec.err).ok; });
 
     // Cálculo interno: mismas operaciones que en Excel, pero sobre el modelo cargado en el motor
     let leerLocal, local, dSup;
@@ -904,21 +905,22 @@ async function simular(avance) {
       const prueba = [...new Set([0, Math.floor(n / 3), Math.floor(2 * n / 3), n - 1])];
       const enExcel = [r0, ...await evaluar(prueba.slice(1).map(caso))];
       prueba.forEach((u, q) => local(caso(u)).forEach((v, j) => {
-        if (!fin(v) || !cerca(v, enExcel[q][j])) throw new Error(`el pronóstico «${pro[j].nombre}» da ${fmt(v)} en el cálculo interno y ${fmt(enExcel[q][j])} en Excel con los mismos datos`);
+        if (fin(v) !== fin(enExcel[q][j]) || (fin(v) && !cerca(v, enExcel[q][j]))) throw new Error(`el pronóstico «${pro[j].nombre}» da ${fmt(v)} en el cálculo interno y ${fmt(enExcel[q][j])} en Excel con los mismos datos`);
       }));
     } catch (e) {
-      if (e.delModelo) throw e;
       motor.hf.destroy(); motor = null; motivo = mensaje(e);
     }
 
     if (motor) {
       await restaurar(); // la hoja ya no se toca durante la simulación
+      const dudosas = [];
       while (t < n) {
         if (cancelar) throw detenido();
         const hasta = Math.min(n, t + 250);
         for (let u = t; u < hasta; u++) {
           const r = local(caso(u));
-          for (let j = 0; j < m; j++) { if (!fin(r[j])) throw noNumerico(j, 'error de cálculo'); outs[j][u] = r[j]; }
+          for (let j = 0; j < m; j++) outs[j][u] = r[j];
+          if (!r.every(fin)) dudosas.push(u);
         }
         t = hasta;
         avance(t, n, outs[0]);
@@ -926,6 +928,14 @@ async function simular(avance) {
         await new Promise(r => setTimeout(r)); // deja respirar a la interfaz
       }
       sup.forEach((s, i) => motor.hf.setCellContents(dSup[i], [[aMotor(originales[i][0][0])]]));
+      // Las iteraciones que dieron error en el cálculo interno se repiten en Excel, que tiene la última palabra
+      const repetir = dudosas.filter(u => u < t).slice(0, 600);
+      for (let a = 0; a < repetir.length; a += 50) {
+        if (cancelar) throw detenido();
+        estado(`Confirmando en Excel las iteraciones con error… ${a} de ${repetir.length}`);
+        const tanda = repetir.slice(a, a + 50), res = await evaluar(tanda.map(caso));
+        tanda.forEach((u, q) => { for (let j = 0; j < m; j++) outs[j][u] = res[q][j]; });
+      }
     } else while (t < n) {
       if (cancelar) throw detenido();
       const hasta = Math.min(n, t + lote), casos = [];
@@ -934,16 +944,20 @@ async function simular(avance) {
       const ini = performance.now();
       let res;
       try { res = await evaluar(casos); }
-      catch (e) { if (e.delModelo || lote <= 1) throw e; lote = Math.max(1, lote >> 2); continue; }
+      catch (e) { if (lote <= 1) throw e; lote = Math.max(1, lote >> 2); continue; }
       if (performance.now() - ini > 4000 && lote > 10) lote = Math.max(10, lote >> 1);
       // Si la lectura por lotes no reproduce la primera iteración, se evalúa de una en una
-      if (t === 0 && lote > 1 && res[0].some((v, j) => Math.abs(v - r0[j]) > 1e-9 * Math.max(1, Math.abs(r0[j])))) { lote = 1; continue; }
+      if (t === 0 && lote > 1 && res[0].some((v, j) => fin(v) !== fin(r0[j]) || Math.abs(v - r0[j]) > 1e-9 * Math.max(1, Math.abs(r0[j])))) { lote = 1; continue; }
       for (let u = t; u < hasta; u++) for (let j = 0; j < m; j++) outs[j][u] = res[u - t][j];
       t = hasta;
       avance(t, n, outs[0]);
       if (alcanzada()) break;
     }
     const N = t, insN = ins.map(a => a.subarray(0, N)), outsN = outs.map(a => a.subarray(0, N));
+    const validas = outsN.map(a => a.reduce((c, v) => c + fin(v), 0));
+    validas.forEach((c, j) => {
+      if (c < Math.min(N, 10)) throw new Error(`El pronóstico «${pro[j].nombre}» dio un valor no numérico en casi todas las iteraciones${errorVisto[j] === null ? '' : ` (${errorVisto[j] === '' ? 'celda vacía' : errorVisto[j]})`}. Revisa su fórmula y los rangos de los supuestos.`);
+    });
 
     // Sensibilidad estática (tornado y araña): con el modelo en su caso base, se mueve una sola entrada a la vez
     // y se lee cada pronóstico. grupos: [{v, xs}] prueba la entrada v con los valores xs; sin v lee el caso base
@@ -1009,15 +1023,18 @@ async function simular(avance) {
       if (cancelar) throw e;
       aviso = `El análisis de tornado quedó incompleto (${mensaje(e)}).`;
     }
+    const conError = pro.map((p, j) => (N - validas[j] ? `«${p.nombre}» dio error en ${(N - validas[j]).toLocaleString('es')}` : '')).filter(Boolean);
+    if (conError.length) aviso = `${conError.join(', ')} iteraciones, que se excluyeron de sus estadísticas. ${aviso}`;
     return {
       n: N, pedidas: n, detenida: N < n, entradas: entradas.filter(v => v.lo).length, entradasTotal: total, aviso,
       modo: motor ? 'rapido' : 'excel', motivo,
       salidas: pro.map((p, j) => {
-        const datos = Float64Array.from(outsN[j]).sort(), ry = rangos(outsN[j]);
+        // Las iteraciones en las que este pronóstico dio error se dejan fuera, también en la sensibilidad
+        const ok = outsN[j].map(v => +fin(v)), serie = outsN[j].filter(fin), datos = Float64Array.from(serie).sort(), ry = rangos(serie);
         return {
-          nombre: p.nombre, datos, stats: resumen(datos),
-          sens: sup.map((s, i) => ({nombre: s.nombre, r: pearson(rangos(insN[i]), ry)})).sort((a, b) => Math.abs(b.r) - Math.abs(a.r)),
-          prec: precision(outsN[j], N, p.prec ? p.prec.conf : 95, p.prec ? p.prec.err : NaN),
+          nombre: p.nombre, datos, stats: resumen(datos), errores: N - serie.length,
+          sens: sup.map((s, i) => ({nombre: s.nombre, r: pearson(rangos(insN[i].filter((_, u) => ok[u])), ry)})).sort((a, b) => Math.abs(b.r) - Math.abs(a.r)),
+          prec: precision(serie, serie.length, p.prec ? p.prec.conf : 95, p.prec ? p.prec.err : NaN),
           base: fin(baseOut[j]) ? baseOut[j] : null,
           tornado: afecta(j).map(v => {
             const y = v.mid && [v.lo[j], ...v.mid.map(r => r[j]), v.hi[j]];
@@ -1094,6 +1111,7 @@ function pintarResultados() {
   $('stats').innerHTML = [
     ['Media', fmt(r.media)], ['Mediana', fmt(r.mediana)], ['Desviación estándar', fmt(r.sd)], ['Varianza', fmt(r.varianza)],
     ['Coef. de variación', fmt(r.cv)], ['Mínimo', fmt(r.min)], ['Máximo', fmt(r.max)], ['Rango', fmt(r.max - r.min)],
+    ...(S.errores ? [['Iteraciones con error (excluidas)', `${S.errores.toLocaleString('es')} de ${resultado.n.toLocaleString('es')}`]] : []),
     ['Asimetría', fmt(r.asim)], ['Curtosis (exceso)', fmt(r.curt)], ['Error estándar de la media', fmt(r.errMedia)],
   ].concat(!S.prec ? [] : [[`Precisión de la media (${fmt(S.prec.conf)} % de confianza)`, `± ${fmt(S.prec.mitad)} (${dec(S.prec.rel, 2)} %)`]],
     !S.prec || S.prec.err === null ? [] : [[`Error pedido: ± ${fmt(S.prec.err)} %`,
