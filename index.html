@@ -74,6 +74,7 @@ h3{font-size:12px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04e
 canvas{display:block;width:100%}
 #vivoCv{height:110px;margin-top:8px}
 #hist{height:220px;touch-action:pan-y;cursor:ew-resize}
+#arana{height:210px}
 .certBox{background:var(--tint);border-radius:8px;padding:10px;margin-top:10px;text-align:center}
 .certBox b{display:block;font-size:24px;color:var(--accent-d);line-height:1.1}
 .certBox span{font-size:12px;color:var(--muted)}
@@ -108,6 +109,7 @@ body.dlg .solo-panel{display:none!important}
 body.dlg main{padding:18px;max-width:1200px;margin:0 auto;width:100%}
 body.dlg{font-size:14px}body.dlg table{font-size:13px}
 body.dlg #hist{height:340px}
+body.dlg #arana{height:300px}
 body.dlg #cuerpo{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 28px}
 body.dlg .bar{grid-template-columns:150px 1fr 100px}
 </style>
@@ -185,9 +187,12 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
           <h3>Sensibilidad (correlación de rangos)</h3>
           <div class="bars" id="sens"></div>
           <p class="legend">Entre paréntesis: contribución a la varianza.</p>
-          <h3>Tornado (cada entrada ±10 %)</h3>
+          <h3>Tornado (cada entrada ±10 %, de mayor a menor efecto)</h3>
           <div class="bars" id="tornado"></div>
           <p class="legend"><b style="background:var(--neg)"></b>entrada −10 %<b style="background:var(--pos)"></b>entrada +10 %</p>
+          <h3>Gráfico de araña (cada entrada de −10 % a +10 %)</h3>
+          <canvas id="arana"></canvas>
+          <p class="legend" id="aranaLeg"></p>
         </div>
         <div>
           <h3>Estadísticas</h3>
@@ -428,6 +433,9 @@ function miniHist(cv, valores, n) {
 // ---------- Estado (se guarda dentro del libro) ----------
 const CLAVE = 'simulador-riesgo', CLAVE_C = 'simulador-riesgo-corridas', MAX_CORRIDAS = 15;
 const COLOR_SUP = '#A9E5A3', COLOR_PRO = '#A8C7FA', OPC_ITER = [500, 1000, 2000, 5000, 10000];
+// Variación de cada entrada respecto al caso base (%), de menor a mayor, para el tornado y la araña
+const NIV = [-10, -5, 5, 10];
+const PALETA = ['#2563eb', '#d9534f', '#e69f00', '#009e73', '#cc79a7', '#56b4e9', '#7c3aed', '#6b7280'];
 let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, detenerPrec: false, contador: 0};
 let corridas = [], resultado = null, sel = 0, cancelar = false, selDir = null;
 let cert = {tipo: 'dos', lo: -Infinity, hi: Infinity}, geo = null;
@@ -520,7 +528,7 @@ async function repintarTodo() {
 function vista(v) {
   for (const x of ['modelo', 'resultados', 'corridas']) $('v-' + x).hidden = x !== v;
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.vista === v));
-  if (v === 'resultados' && resultado) actualizarCerteza();
+  if (v === 'resultados' && resultado) { actualizarCerteza(); arana(); }
   if (v === 'corridas') pintarCorridas();
 }
 
@@ -714,15 +722,15 @@ async function simular(avance) {
     }
     const N = t, insN = ins.map(a => a.subarray(0, N)), outsN = outs.map(a => a.subarray(0, N));
 
-    // Tornado: caso base (valores actuales de la hoja) y cada entrada ±10 %
+    // Tornado y araña: caso base (valores actuales de la hoja) y cada entrada en los niveles de NIV
     let tornado = [], baseOut = null;
     if (base.every(v => typeof v === 'number')) {
       const numericos = base.map((v, i) => (v !== 0 ? i : -1)).filter(i => i >= 0), casos = [base];
-      for (const i of numericos) for (const f of [0.9, 1.1]) { const b = base.slice(); b[i] = base[i] * f; casos.push(b); }
+      for (const i of numericos) for (const f of NIV) { const b = base.slice(); b[i] = base[i] * (1 + f / 100); casos.push(b); }
       const res = [];
       for (let a = 0; a < casos.length; a += lote) res.push(...await evaluar(casos.slice(a, a + lote)));
       baseOut = res[0];
-      tornado = numericos.map((i, q) => ({nombre: sup[i].nombre, lo: res[1 + 2 * q], hi: res[2 + 2 * q]}));
+      tornado = numericos.map((i, q) => ({nombre: sup[i].nombre, niv: NIV.map((_, a) => res[1 + NIV.length * q + a])}));
     }
 
     return {
@@ -734,7 +742,7 @@ async function simular(avance) {
           sens: sup.map((s, i) => ({nombre: s.nombre, r: pearson(rangos(insN[i]), ry)})).sort((a, b) => Math.abs(b.r) - Math.abs(a.r)),
           prec: precision(outsN[j], N, p.prec ? p.prec.conf : 95, p.prec ? p.prec.err : NaN),
           base: baseOut ? baseOut[j] : null,
-          tornado: tornado.map(x => ({nombre: x.nombre, lo: x.lo[j], hi: x.hi[j]})),
+          tornado: tornado.map(x => ({nombre: x.nombre, lo: x.niv[0][j], hi: x.niv[NIV.length - 1][j], y: x.niv.map(r => r[j])})),
         };
       }),
     };
@@ -822,7 +830,7 @@ function pintarResultados() {
   }).join('');
 
   const b0 = S.base;
-  const tor = S.tornado.filter(t => t.lo !== b0 || t.hi !== b0).sort((a, b) => Math.abs(b.hi - b.lo) - Math.abs(a.hi - a.lo)).slice(0, 12);
+  const tor = efectos(S);
   let gMin = b0, gMax = b0;
   for (const t of tor) { gMin = Math.min(gMin, t.lo, t.hi); gMax = Math.max(gMax, t.lo, t.hi); }
   const pos = x => gMax > gMin ? 100 * (x - gMin) / (gMax - gMin) : 50;
@@ -831,7 +839,56 @@ function pintarResultados() {
       <div class="track">${seg(t.lo, '--neg')}${seg(t.hi, '--pos')}<i class="mid" style="left:${pos(b0)}%"></i></div>
       <span class="val" title="de ${fmt(t.lo)} a ${fmt(t.hi)}">±${fmt(Math.abs(t.hi - t.lo) / 2)}</span></div>`).join('')
     + (tor.length ? `<p class="legend">Caso base: ${fmt(b0)}</p>` : '<p class="vacio">No disponible para este pronóstico.</p>');
+  arana();
   fijarCerteza(90);
+}
+
+// Entradas que mueven el pronóstico al variarlas, de mayor a menor efecto
+function efectos(S) {
+  return S.tornado.filter(t => t.lo !== S.base || t.hi !== S.base).sort((a, b) => Math.abs(b.hi - b.lo) - Math.abs(a.hi - a.lo));
+}
+// Araña: una línea por entrada con el valor del pronóstico según cuánto se aleja la entrada de su valor base
+function arana() {
+  if (!resultado) return;
+  const S = resultado.salidas[sel], b0 = S.base, todas = efectos(S), vars = todas.slice(0, PALETA.length), cv = $('arana');
+  cv.hidden = !vars.length;
+  $('aranaLeg').innerHTML = vars.length
+    ? vars.map((t, i) => `<span style="white-space:nowrap"><b style="background:${PALETA[i]}"></b>${esc(t.nombre)}</span>`).join(' ')
+      + `<br>Cuanto más inclinada la línea, más sensible es el pronóstico a esa entrada.`
+      + (todas.length > vars.length ? ` Se muestran las ${vars.length} entradas con más efecto de ${todas.length}.` : '')
+    : 'No disponible para este pronóstico.';
+  if (!vars.length) return;
+  const {g, W, H} = lienzo(cv);
+  if (!W) return;
+  // Las corridas guardadas antes de tener niveles intermedios solo traen los extremos
+  const lineas = vars.map(t => (t.y ? NIV.map((x, a) => [x, t.y[a]]) : [[NIV[0], t.lo], [NIV[NIV.length - 1], t.hi]]).concat([[0, b0]]).sort((a, b) => a[0] - b[0]));
+  let min = b0, max = b0;
+  for (const l of lineas) for (const [, y] of l) { if (y < min) min = y; if (y > max) max = y; }
+  const holgura = (max - min) * 0.06; min -= holgura; max += holgura;
+  const eje = v => (Math.abs(v) >= 10000 ? v.toLocaleString('es', {notation: 'compact', maximumFractionDigits: 1}) : fmt(v));
+  const x0 = NIV[0], x1 = NIV[NIV.length - 1], mL = 52, mR = 12, mT = 8, mB = 24, pw = W - mL - mR, ph = H - mT - mB;
+  const px = x => mL + pw * (x - x0) / (x1 - x0), py = y => mT + ph - ph * (y - min) / (max - min);
+  g.font = '10px "Segoe UI", sans-serif'; g.fillStyle = color('--muted'); g.strokeStyle = color('--line'); g.lineWidth = 1;
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let k = 0; k <= 4; k++) {
+    const v = min + (max - min) * k / 4, y = Math.round(py(v)) + .5;
+    g.beginPath(); g.moveTo(mL, y); g.lineTo(mL + pw, y); g.stroke();
+    g.fillText(eje(v), mL - 4, y);
+  }
+  g.textBaseline = 'top';
+  [x0, x0 / 2, 0, x1 / 2, x1].forEach((x, k) => {
+    g.textAlign = k === 0 ? 'left' : k === 4 ? 'right' : 'center';
+    g.fillText((x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x) + ' %', px(x), mT + ph + 6);
+  });
+  g.setLineDash([3, 3]); g.strokeStyle = color('--muted');
+  g.beginPath(); g.moveTo(Math.round(px(0)) + .5, mT); g.lineTo(Math.round(px(0)) + .5, mT + ph); g.stroke();
+  g.setLineDash([]); g.lineWidth = 2; g.lineJoin = 'round';
+  // Se dibuja de menor a mayor efecto para que las líneas más importantes queden encima
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    g.strokeStyle = g.fillStyle = PALETA[i];
+    g.beginPath(); lineas[i].forEach(([x, y], a) => (a ? g.lineTo(px(x), py(y)) : g.moveTo(px(x), py(y)))); g.stroke();
+    for (const [x, y] of lineas[i]) if (x !== 0) { g.beginPath(); g.arc(px(x), py(y), 2.5, 0, 2 * Math.PI); g.fill(); }
+  }
 }
 
 // Certeza: dos colas (intervalo), cola izquierda (≤ límite) o cola derecha (≥ límite)
@@ -906,7 +963,7 @@ function iniciarResultados() {
     const texto = e.target.value, c = parseFloat(texto);
     if (resultado && c >= 0 && c <= 100) { fijarCerteza(c); e.target.value = texto; }
   };
-  window.addEventListener('resize', () => resultado && !$('v-resultados').hidden && histograma(resultado.salidas[sel].datos));
+  window.addEventListener('resize', () => { if (resultado && !$('v-resultados').hidden) { histograma(resultado.salidas[sel].datos); arana(); } });
 
   // Arrastrar los límites sobre el histograma
   const cv = $('hist');
