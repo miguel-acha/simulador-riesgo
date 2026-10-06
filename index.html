@@ -624,7 +624,7 @@ async function agregar(tipo) {
     if (esSup && typeof c.valor !== 'number') throw new Error('El supuesto debe ser una celda con un número.');
     const indice = lista.findIndex(x => x.celda === c.celda);
     const item = indice >= 0 ? structuredClone(lista[indice])
-      : esSup ? {celda: c.celda, nombre: c.etiqueta || corta(c.celda), dist: 'triangular', p: sugerir('triangular', c.valor), valorBase: c.valor}
+      : esSup ? {celda: c.celda, nombre: c.etiqueta || corta(c.celda), dist: 'normal', p: sugerir('normal', c.valor), valorBase: c.valor}
       : {celda: c.celda, nombre: c.etiqueta || corta(c.celda)};
     estado('');
     abrirEditor({tipo, indice, item, valor: c.valor});
