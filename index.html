@@ -147,7 +147,7 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
         <label class="campo">Otra cantidad<input id="iter" type="number" min="10" max="100000" step="1"></label>
         <label class="campo">Semilla (opcional)<input id="semilla" type="number" step="1" placeholder="aleatoria"></label>
       </div>
-      <label class="sw" id="swParar" hidden><input type="checkbox" id="pararPrec"><i></i>Detener antes si se alcanza la precisión pedida</label>
+      <label class="sw" id="swParar" hidden><input type="checkbox" id="pararPrec"><i></i>Detener antes de completar las iteraciones si se alcanza la precisión pedida</label>
       <label class="sw"><input type="checkbox" id="vivo"><i></i>Ver la simulación mientras corre (más lento)</label>
       <label class="sw"><input type="checkbox" id="colorear"><i></i>Colorear las celdas marcadas</label>
     </div>
@@ -428,7 +428,7 @@ function miniHist(cv, valores, n) {
 // ---------- Estado (se guarda dentro del libro) ----------
 const CLAVE = 'simulador-riesgo', CLAVE_C = 'simulador-riesgo-corridas', MAX_CORRIDAS = 15;
 const COLOR_SUP = '#A9E5A3', COLOR_PRO = '#A8C7FA', OPC_ITER = [500, 1000, 2000, 5000, 10000];
-let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, pararPrec: true, contador: 0};
+let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, detenerPrec: false, contador: 0};
 let corridas = [], resultado = null, sel = 0, cancelar = false, selDir = null;
 let cert = {tipo: 'dos', lo: -Infinity, hi: Infinity}, geo = null;
 
@@ -538,7 +538,7 @@ function pintarListas() {
 function pintarOpciones() {
   $('chips').innerHTML = OPC_ITER.map(n => `<button class="chip${n === modelo.iter ? ' on' : ''}" data-iter="${n}">${n.toLocaleString('es')}</button>`).join('');
   $('iter').value = modelo.iter; $('semilla').value = modelo.semilla;
-  $('vivo').checked = !!modelo.vivo; $('colorear').checked = !!modelo.colorear; $('pararPrec').checked = !!modelo.pararPrec;
+  $('vivo').checked = !!modelo.vivo; $('colorear').checked = !!modelo.colorear; $('pararPrec').checked = !!modelo.detenerPrec;
 }
 
 // ---------- Editor de supuestos y pronósticos ----------
@@ -560,7 +560,7 @@ function abrirEditor(e) {
         <label class="campo">Confianza %<input id="edConf" type="number" step="any" value="${d.prec ? d.prec.conf : 95}"></label>
         <label class="campo">Error ± %<input id="edErrPct" type="number" step="any" value="${d.prec ? d.prec.err : 1}"></label>
       </div>
-      <p class="hint" style="margin-top:8px">La simulación se detiene antes de completar las iteraciones cuando la media queda dentro de ese error con esa confianza. Puedes desactivar esa parada en «Simulación».</p>
+      <p class="hint" style="margin-top:8px">Los resultados indican si la media quedó dentro de ese error con esa confianza. Si además quieres que la simulación se detenga en cuanto lo logre, actívalo en «Simulación».</p>
     </div>`}
     <div id="edErr"></div>
     <div style="display:flex;gap:8px"><button class="btn primary" id="edOk">Guardar</button><button class="btn" id="edNo">Cancelar</button></div>`;
@@ -636,7 +636,7 @@ function iniciarPanel() {
   };
   $('semilla').onchange = e => { modelo.semilla = e.target.value; guardar(); };
   $('vivo').onchange = e => { modelo.vivo = e.target.checked; guardar(); };
-  $('pararPrec').onchange = e => { modelo.pararPrec = e.target.checked; guardar(); };
+  $('pararPrec').onchange = e => { modelo.detenerPrec = e.target.checked; guardar(); };
   $('colorear').onchange = async e => { modelo.colorear = e.target.checked; await repintarTodo(); guardar(); };
   $('run').onclick = correr;
   $('cancel').onclick = () => { cancelar = true; };
@@ -699,7 +699,7 @@ async function simular(avance) {
     // La primera iteración se evalúa sola y sirve para comprobar que la lectura por lotes es fiable
     const r0 = (await evaluar([caso(0)]))[0];
     let lote = vivo ? 10 : 200;
-    const conPrec = modelo.pararPrec ? pro.map((p, j) => (p.prec ? j : -1)).filter(j => j >= 0) : [];
+    const conPrec = modelo.detenerPrec ? pro.map((p, j) => (p.prec ? j : -1)).filter(j => j >= 0) : [];
     let t = 0;
     while (t < n) {
       if (cancelar) throw new Error('Simulación detenida.');
@@ -765,7 +765,7 @@ async function correr() {
     corridas.unshift(compactar(res, 1001));
     corridas.length = Math.min(corridas.length, MAX_CORRIDAS);
     const seg = dec((performance.now() - t0) / 1000, 1);
-    estado(res.detenida ? `Se detuvo en ${res.n.toLocaleString('es')} de ${res.pedidas.toLocaleString('es')} iteraciones (${seg} s) porque ya se alcanzó la precisión pedida en los pronósticos. Para correrlas todas, apaga «Detener antes si se alcanza la precisión pedida».`
+    estado(res.detenida ? `Se detuvo en ${res.n.toLocaleString('es')} de ${res.pedidas.toLocaleString('es')} iteraciones (${seg} s) porque ya se alcanzó la precisión pedida en los pronósticos. Para correrlas todas, apaga «Detener antes de completar las iteraciones…» en Simulación.`
       : `Listo: ${res.n.toLocaleString('es')} iteraciones en ${seg} s.`, 'ok');
     pintarResultados(); vista('resultados');
     await guardar(); await guardarCorridas();
