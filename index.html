@@ -9,7 +9,7 @@
 :root{--bg:#f3f5f4;--card:#fff;--text:#1b2420;--muted:#66736c;--line:#dde3df;--accent:#107c41;--accent-d:#0b5c30;--accent-soft:#bfe0cd;--tint:#e8f4ed;
   --sup:#8fd694;--pro:#8ab4f8;--pos:#2563eb;--neg:#d9534f;--err:#b42318}
 *{box-sizing:border-box}
-html,body{height:100%}
+html,body{height:100%;overflow:hidden}
 body{margin:0;background:var(--bg);color:var(--text);font:13px/1.4 "Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,sans-serif;display:flex;flex-direction:column}
 button,input{font:inherit;color:inherit}
 button{cursor:pointer;border:0;background:none;padding:0}
@@ -25,7 +25,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .nav{display:flex;background:var(--card);border-bottom:1px solid var(--line)}
 .nav button{flex:1;padding:9px 4px;color:var(--muted);font-weight:600;border-bottom:2px solid transparent}
 .nav button.on{color:var(--accent);border-bottom-color:var(--accent)}
-main{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+main{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:10px;display:flex;flex-direction:column;gap:10px}
 .vista{display:flex;flex-direction:column;gap:10px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
 .card h2{font-size:13px;margin:0 0 2px;display:flex;align-items:center;gap:6px}
@@ -60,7 +60,7 @@ h3{font-size:12px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04e
 .seg button{flex:1;padding:6px 4px;font-size:12px;border-left:1px solid var(--line)}
 .seg button:first-child{border-left:0}
 .seg button.on{background:var(--accent);color:#fff}
-.sw{display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer}
+.sw{position:relative;display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer}
 .sw input{position:absolute;opacity:0;width:0;height:0}
 .sw i{width:32px;height:18px;border-radius:9px;background:#c5cdc8;position:relative;flex:none;transition:background .15s}
 .sw i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .15s}
@@ -73,7 +73,7 @@ h3{font-size:12px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04e
 #status.err{color:var(--err)}#status.ok{color:var(--accent)}
 canvas{display:block;width:100%}
 #vivoCv{height:110px;margin-top:8px}
-#hist{height:220px;touch-action:none;cursor:ew-resize}
+#hist{height:220px;touch-action:pan-y;cursor:ew-resize}
 .certBox{background:var(--tint);border-radius:8px;padding:10px;margin-top:10px;text-align:center}
 .certBox b{display:block;font-size:24px;color:var(--accent-d);line-height:1.1}
 .certBox span{font-size:12px;color:var(--muted)}
@@ -147,6 +147,7 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
         <label class="campo">Otra cantidad<input id="iter" type="number" min="10" max="100000" step="1"></label>
         <label class="campo">Semilla (opcional)<input id="semilla" type="number" step="1" placeholder="aleatoria"></label>
       </div>
+      <label class="sw" id="swParar" hidden><input type="checkbox" id="pararPrec"><i></i>Detener antes si se alcanza la precisión pedida</label>
       <label class="sw"><input type="checkbox" id="vivo"><i></i>Ver la simulación mientras corre (más lento)</label>
       <label class="sw"><input type="checkbox" id="colorear"><i></i>Colorear las celdas marcadas</label>
     </div>
@@ -427,7 +428,7 @@ function miniHist(cv, valores, n) {
 // ---------- Estado (se guarda dentro del libro) ----------
 const CLAVE = 'simulador-riesgo', CLAVE_C = 'simulador-riesgo-corridas', MAX_CORRIDAS = 15;
 const COLOR_SUP = '#A9E5A3', COLOR_PRO = '#A8C7FA', OPC_ITER = [500, 1000, 2000, 5000, 10000];
-let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, contador: 0};
+let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, pararPrec: true, contador: 0};
 let corridas = [], resultado = null, sel = 0, cancelar = false, selDir = null;
 let cert = {tipo: 'dos', lo: -Infinity, hi: Infinity}, geo = null;
 
@@ -532,11 +533,12 @@ function pintarListas() {
     || '<p class="vacio">Selecciona una celda en la hoja y pulsa el botón.</p>';
   $('pronosticos').innerHTML = modelo.pronosticos.map((p, i) => fila(p, i, 'pro', p.prec ? ` · confianza ${fmt(p.prec.conf)} %, error ± ${fmt(p.prec.err)} %` : '')).join('')
     || '<p class="vacio">Selecciona la celda del resultado y pulsa el botón.</p>';
+  $('swParar').hidden = !modelo.pronosticos.some(p => p.prec);
 }
 function pintarOpciones() {
   $('chips').innerHTML = OPC_ITER.map(n => `<button class="chip${n === modelo.iter ? ' on' : ''}" data-iter="${n}">${n.toLocaleString('es')}</button>`).join('');
   $('iter').value = modelo.iter; $('semilla').value = modelo.semilla;
-  $('vivo').checked = !!modelo.vivo; $('colorear').checked = !!modelo.colorear;
+  $('vivo').checked = !!modelo.vivo; $('colorear').checked = !!modelo.colorear; $('pararPrec').checked = !!modelo.pararPrec;
 }
 
 // ---------- Editor de supuestos y pronósticos ----------
@@ -558,7 +560,7 @@ function abrirEditor(e) {
         <label class="campo">Confianza %<input id="edConf" type="number" step="any" value="${d.prec ? d.prec.conf : 95}"></label>
         <label class="campo">Error ± %<input id="edErrPct" type="number" step="any" value="${d.prec ? d.prec.err : 1}"></label>
       </div>
-      <p class="hint" style="margin-top:8px">La simulación se detiene cuando la media queda dentro de ese error con esa confianza, o al llegar al máximo de iteraciones.</p>
+      <p class="hint" style="margin-top:8px">La simulación se detiene antes de completar las iteraciones cuando la media queda dentro de ese error con esa confianza. Puedes desactivar esa parada en «Simulación».</p>
     </div>`}
     <div id="edErr"></div>
     <div style="display:flex;gap:8px"><button class="btn primary" id="edOk">Guardar</button><button class="btn" id="edNo">Cancelar</button></div>`;
@@ -634,6 +636,7 @@ function iniciarPanel() {
   };
   $('semilla').onchange = e => { modelo.semilla = e.target.value; guardar(); };
   $('vivo').onchange = e => { modelo.vivo = e.target.checked; guardar(); };
+  $('pararPrec').onchange = e => { modelo.pararPrec = e.target.checked; guardar(); };
   $('colorear').onchange = async e => { modelo.colorear = e.target.checked; await repintarTodo(); guardar(); };
   $('run').onclick = correr;
   $('cancel').onclick = () => { cancelar = true; };
@@ -696,7 +699,7 @@ async function simular(avance) {
     // La primera iteración se evalúa sola y sirve para comprobar que la lectura por lotes es fiable
     const r0 = (await evaluar([caso(0)]))[0];
     let lote = vivo ? 10 : 200;
-    const conPrec = pro.map((p, j) => (p.prec ? j : -1)).filter(j => j >= 0);
+    const conPrec = modelo.pararPrec ? pro.map((p, j) => (p.prec ? j : -1)).filter(j => j >= 0) : [];
     let t = 0;
     while (t < n) {
       if (cancelar) throw new Error('Simulación detenida.');
@@ -723,7 +726,7 @@ async function simular(avance) {
     }
 
     return {
-      n: N, detenida: N < n,
+      n: N, pedidas: n, detenida: N < n,
       salidas: pro.map((p, j) => {
         const datos = Float64Array.from(outsN[j]).sort(), ry = rangos(outsN[j]);
         return {
@@ -761,7 +764,9 @@ async function correr() {
     resultado = res; sel = 0;
     corridas.unshift(compactar(res, 1001));
     corridas.length = Math.min(corridas.length, MAX_CORRIDAS);
-    estado(`${res.detenida ? 'Precisión alcanzada' : 'Listo'}: ${res.n.toLocaleString('es')} iteraciones en ${dec((performance.now() - t0) / 1000, 1)} s.`, 'ok');
+    const seg = dec((performance.now() - t0) / 1000, 1);
+    estado(res.detenida ? `Se detuvo en ${res.n.toLocaleString('es')} de ${res.pedidas.toLocaleString('es')} iteraciones (${seg} s) porque ya se alcanzó la precisión pedida en los pronósticos. Para correrlas todas, apaga «Detener antes si se alcanza la precisión pedida».`
+      : `Listo: ${res.n.toLocaleString('es')} iteraciones en ${seg} s.`, 'ok');
     pintarResultados(); vista('resultados');
     await guardar(); await guardarCorridas();
   } catch (e) { estado(mensaje(e), 'err'); }
@@ -794,7 +799,7 @@ function pintarResultados() {
   if (sel >= resultado.salidas.length) sel = 0;
   const S = resultado.salidas[sel], r = S.stats, fila = (a, b) => `<tr><td>${a}</td><td>${b}</td></tr>`;
   $('tituloRes').textContent = resultado.nombre || 'Resultados';
-  $('subRes').textContent = `${resultado.n.toLocaleString('es')} iteraciones` + (resultado.fecha ? ' · ' + new Date(resultado.fecha).toLocaleString('es', {dateStyle: 'medium', timeStyle: 'short'}) : '');
+  $('subRes').textContent = `${resultado.n.toLocaleString('es')} iteraciones` + (resultado.detenida && resultado.pedidas ? ` de ${resultado.pedidas.toLocaleString('es')} (precisión alcanzada)` : '') + (resultado.fecha ? ' · ' + new Date(resultado.fecha).toLocaleString('es', {dateStyle: 'medium', timeStyle: 'short'}) : '');
   $('tabs').innerHTML = resultado.salidas.length > 1
     ? resultado.salidas.map((s, i) => `<button class="chip${i === sel ? ' on' : ''}" data-tab="${i}">${esc(s.nombre)}</button>`).join('')
     : `<span class="chip on">${esc(S.nombre)}</span>`;
