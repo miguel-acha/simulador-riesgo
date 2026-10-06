@@ -155,6 +155,7 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
         <label class="campo">Semilla (opcional)<input id="semilla" type="number" step="1" placeholder="aleatoria"></label>
       </div>
       <label class="sw" id="swParar" hidden><input type="checkbox" id="pararPrec"><i></i>Detener antes de completar las iteraciones si se alcanza la precisión pedida</label>
+      <label class="sw"><input type="checkbox" id="rapido"><i></i>Modo rápido: calcular el modelo dentro del complemento (se verifica contra Excel)</label>
       <label class="sw"><input type="checkbox" id="precedentes"><i></i>Tornado y araña con todas las celdas de entrada del modelo, no solo los supuestos</label>
       <label class="sw"><input type="checkbox" id="vivo"><i></i>Ver la simulación mientras corre (más lento)</label>
       <label class="sw"><input type="checkbox" id="colorear"><i></i>Colorear las celdas marcadas</label>
@@ -439,12 +440,12 @@ function miniHist(cv, valores, n) {
 }
 
 // ---------- Estado (se guarda dentro del libro) ----------
-const CLAVE = 'simulador-riesgo', CLAVE_C = 'simulador-riesgo-corridas', MAX_CORRIDAS = 15, MAX_ENTRADAS = 200, TOR_VISIBLES = 15;
+const CLAVE = 'simulador-riesgo', CLAVE_C = 'simulador-riesgo-corridas', MAX_CORRIDAS = 15, MAX_ENTRADAS = 200, MAX_ENTRADAS_RAPIDO = 2000, TOR_VISIBLES = 15;
 const COLOR_SUP = '#A9E5A3', COLOR_PRO = '#A8C7FA', OPC_ITER = [500, 1000, 2000, 5000, 10000];
 // Variación de cada entrada respecto al caso base (%), de menor a mayor, para el tornado y la araña
 const NIV = [-10, -5, 5, 10];
 const PALETA = ['#2563eb', '#d9534f', '#e69f00', '#009e73', '#cc79a7', '#56b4e9', '#7c3aed', '#6b7280'];
-let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, detenerPrec: false, precedentes: true, contador: 0};
+let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, detenerPrec: false, precedentes: true, rapido: true, contador: 0};
 let corridas = [], resultado = null, sel = 0, cancelar = false, selDir = null, torTodo = false;
 let cert = {tipo: 'dos', lo: -Infinity, hi: Infinity}, geo = null;
 
@@ -554,7 +555,7 @@ function pintarListas() {
 function pintarOpciones() {
   $('chips').innerHTML = OPC_ITER.map(n => `<button class="chip${n === modelo.iter ? ' on' : ''}" data-iter="${n}">${n.toLocaleString('es')}</button>`).join('');
   $('iter').value = modelo.iter; $('semilla').value = modelo.semilla;
-  $('vivo').checked = !!modelo.vivo; $('colorear').checked = !!modelo.colorear; $('pararPrec').checked = !!modelo.detenerPrec; $('precedentes').checked = !!modelo.precedentes;
+  $('vivo').checked = !!modelo.vivo; $('colorear').checked = !!modelo.colorear; $('pararPrec').checked = !!modelo.detenerPrec; $('precedentes').checked = !!modelo.precedentes; $('rapido').checked = !!modelo.rapido;
 }
 
 // ---------- Editor de supuestos y pronósticos ----------
@@ -654,6 +655,7 @@ function iniciarPanel() {
   $('vivo').onchange = e => { modelo.vivo = e.target.checked; guardar(); };
   $('pararPrec').onchange = e => { modelo.detenerPrec = e.target.checked; guardar(); };
   $('precedentes').onchange = e => { modelo.precedentes = e.target.checked; guardar(); };
+  $('rapido').onchange = e => { modelo.rapido = e.target.checked; guardar(); };
   $('colorear').onchange = async e => { modelo.colorear = e.target.checked; await repintarTodo(); guardar(); };
   $('run').onclick = correr;
   $('cancel').onclick = () => { cancelar = true; };
@@ -671,72 +673,148 @@ function iniciarPanel() {
   });
 }
 
-// ---------- Celdas de entrada del modelo ----------
+// ---------- Modelo: celdas de las que dependen los pronósticos ----------
 const colNum = l => [...l].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0);
 const colLetra = n => { let l = ''; for (; n > 0; n = Math.floor((n - 1) / 26)) l = String.fromCharCode(65 + (n - 1) % 26) + l; return l; };
 const claveCelda = dir => { const [h, a] = partir(dir); return h + '!' + a.replace(/\$/g, '').toUpperCase(); };
-
+const dirExcel = (hoja, a1) => `'${hoja.replace(/'/g, "''")}'!${a1}`;
+const esFormula = f => typeof f === 'string' && f.startsWith('=');
 // Rechaza si la promesa no termina en ms milisegundos
 const limite = (ms, promesa) => Promise.race([promesa, new Promise((_, no) => setTimeout(() => no(Object.assign(new Error('Tiempo agotado'), {lento: true})), ms))]);
 
-// Entradas para el tornado: los supuestos y, si se pide, todas las celdas con un número fijo de las que
-// dependen los pronósticos (sus precedentes), como hace el análisis de tornado de Risk Simulator
-async function entradasModelo(sup, pro, originales, base) {
+// Lee los supuestos, los pronósticos y todos sus precedentes (las celdas de las que dependen, en cualquier hoja),
+// con su fórmula y su valor actual. Sirve para el tornado y para el modo rápido
+async function leerModelo(sup, pro) {
+  const mod = {celdas: new Map(), completo: true, aviso: ''};
+  const poner = (hoja, fila, col, f, v) => {
+    const k = hoja + '!' + colLetra(col + 1) + (fila + 1);
+    if (!mod.celdas.has(k)) mod.celdas.set(k, {hoja, fila, col, f, v});
+  };
+  await Excel.run(async ctx => {
+    const xs = [...sup, ...pro], rs = xs.map(x => rango(ctx, x.celda));
+    rs.forEach(r => r.load('formulas,values,rowIndex,columnIndex')); await ctx.sync();
+    rs.forEach((r, i) => poner(partir(xs[i].celda)[0], r.rowIndex, r.columnIndex, r.formulas[0][0], r.values[0][0]));
+  });
+  if (!Office.context.requirements.isSetSupported('ExcelApi', '1.14')) { mod.completo = false; return mod; }
+  for (const p of pro) {
+    try {
+      await limite(25000, Excel.run(async ctx => {
+        const grupo = rango(ctx, p.celda).getPrecedents();
+        grupo.areas.load('items'); await ctx.sync();
+        grupo.areas.items.forEach(a => a.areas.load('items/address,items/cellCount,items/rowIndex,items/columnIndex')); await ctx.sync();
+        // Se descartan referencias enormes (columnas o filas enteras)
+        const todos = grupo.areas.items.flatMap(a => a.areas.items), rs = todos.filter(r => r.cellCount <= 20000);
+        if (rs.length < todos.length) mod.completo = false;
+        rs.forEach(r => r.load('formulas,values')); await ctx.sync();
+        for (const r of rs) {
+          const hoja = partir(r.address)[0];
+          r.formulas.forEach((fila, i) => fila.forEach((f, j) => {
+            const v = r.values[i][j];
+            if (f !== '' || v !== '') poner(hoja, r.rowIndex + i, r.columnIndex + j, f, v);
+          }));
+        }
+      }));
+    } catch (e) {
+      // Una celda sin precedentes hace fallar la consulta; solo importa si el pronóstico es una fórmula
+      const propia = mod.celdas.get(claveCelda(p.celda));
+      if (propia && esFormula(propia.f)) mod.completo = false;
+      if (e.lento) mod.aviso = 'Excel tardó demasiado en rastrear las celdas de entrada del modelo.';
+    }
+  }
+  return mod;
+}
+
+// Entradas para el tornado: los supuestos y, si se pide, todas las celdas del modelo con un número fijo,
+// como hace el análisis de tornado de Risk Simulator
+function entradasModelo(sup, pro, originales, base, mod, max) {
   const vars = new Map();
-  let aviso = '';
   sup.forEach((s, i) => {
     if (typeof base[i] === 'number' && base[i] !== 0) vars.set(claveCelda(s.celda), {celda: s.celda, nombre: s.nombre, base: base[i], orig: originales[i][0][0], sup: true});
   });
-  if (modelo.precedentes && Office.context.requirements.isSetSupported('ExcelApi', '1.14')) {
-    const propias = new Set(pro.map(p => claveCelda(p.celda)));
-    for (const p of pro) {
-      try { // un pronóstico sin precedentes hace fallar la consulta; se ignora
-        await limite(25000, Excel.run(async ctx => {
-          const grupo = rango(ctx, p.celda).getPrecedents();
-          grupo.areas.load('items'); await ctx.sync();
-          grupo.areas.items.forEach(a => a.areas.load('items/address,items/cellCount')); await ctx.sync();
-          // Se descartan referencias enormes (columnas o filas enteras)
-          const rs = grupo.areas.items.flatMap(a => a.areas.items).filter(r => r.cellCount <= 5000);
-          rs.forEach(r => r.load('formulas,values')); await ctx.sync();
-          for (const r of rs) {
-            const corte = r.address.lastIndexOf('!'), prefijo = r.address.slice(0, corte + 1);
-            const m = /^\$?([A-Z]+)\$?(\d+)/.exec(r.address.slice(corte + 1));
-            if (!m) continue;
-            const c0 = colNum(m[1]), f0 = +m[2];
-            r.formulas.forEach((fila, i) => fila.forEach((f, j) => {
-              const v = r.values[i][j];
-              if (typeof f !== 'number' || typeof v !== 'number' || v === 0) return; // solo números fijos, no fórmulas
-              const dir = prefijo + colLetra(c0 + j) + (f0 + i), k = claveCelda(dir);
-              if (!vars.has(k) && !propias.has(k)) vars.set(k, {celda: dir, base: v, orig: f, fila: f0 + i - 1, col: c0 + j - 1});
-            }));
-          }
-        }));
-      } catch (e) { if (e.lento) aviso = 'Excel tardó demasiado en rastrear las celdas de entrada del modelo; el tornado usa solo las que alcanzó a encontrar.'; }
-    }
+  const propias = new Set(pro.map(p => claveCelda(p.celda)));
+  if (modelo.precedentes && mod) for (const [k, c] of mod.celdas) {
+    if (typeof c.f !== 'number' || typeof c.v !== 'number' || c.v === 0 || vars.has(k) || propias.has(k)) continue; // solo números fijos, no fórmulas
+    vars.set(k, {celda: dirExcel(c.hoja, colLetra(c.col + 1) + (c.fila + 1)), base: c.v, orig: c.f, hoja: c.hoja, fila: c.fila, col: c.col});
   }
-  const total = vars.size, lista = [...vars.values()].slice(0, MAX_ENTRADAS);
-  // Nombre de cada celda nueva: el texto más cercano a su izquierda, igual que al definir un supuesto
-  const sinNombre = lista.filter(v => !v.nombre);
+  return {lista: [...vars.values()].slice(0, max), total: vars.size};
+}
+// Nombre de cada celda nueva: el texto más cercano a su izquierda, igual que al definir un supuesto
+async function nombrar(lista) {
+  const sin = lista.filter(v => !v.nombre), hojas = [...new Set(sin.map(v => v.hoja))], usados = {};
   try {
-    await Excel.run(async ctx => {
-      const izq = sinNombre.map(v => {
-        if (!v.col) return null;
-        const r = ctx.workbook.worksheets.getItem(partir(v.celda)[0]).getRangeByIndexes(v.fila, 0, 1, v.col);
-        r.load('values'); return r;
-      });
+    await limite(20000, Excel.run(async ctx => {
+      const us = hojas.map(h => { const u = ctx.workbook.worksheets.getItem(h).getUsedRange(true); u.load('values,rowIndex,columnIndex'); return u; });
       await ctx.sync();
-      sinNombre.forEach((v, i) => { if (izq[i]) for (const t of izq[i].values[0]) if (typeof t === 'string' && t.trim()) v.etiqueta = t.trim(); });
-    });
+      hojas.forEach((h, i) => { usados[h] = {values: us[i].values, fila0: us[i].rowIndex, col0: us[i].columnIndex}; });
+    }));
   } catch {}
   const variasHojas = new Set(lista.map(v => partir(v.celda)[0])).size > 1;
-  for (const v of sinNombre) {
-    const [hoja, a1] = partir(v.celda), donde = variasHojas ? hoja + '!' + a1 : a1;
-    v.nombre = v.etiqueta ? `${v.etiqueta} (${donde})` : donde;
+  for (const v of sin) {
+    const u = usados[v.hoja], fila = u && u.values[v.fila - u.fila0], a1 = colLetra(v.col + 1) + (v.fila + 1);
+    let etiqueta = '';
+    if (fila) for (let c = 0; c < v.col - u.col0 && c < fila.length; c++) if (typeof fila[c] === 'string' && fila[c].trim()) etiqueta = fila[c].trim();
+    const donde = variasHojas ? v.hoja + '!' + a1 : a1;
+    v.nombre = etiqueta ? `${etiqueta} (${donde})` : donde;
   }
-  return {lista, total, aviso};
 }
 
-// ---------- Simulación sobre la hoja ----------
+// ---------- Modo rápido: el modelo se calcula dentro del complemento ----------
+// Las fórmulas leídas de Excel se evalúan con HyperFormula; así cada iteración no tiene que ir y volver de Excel
+const CONFIG_HF = {
+  licenseKey: 'gpl-v3', undoLimit: 0, useStats: false, precisionRounding: 14,
+  functionArgSeparator: ',', decimalSeparator: '.', thousandSeparator: '', arrayColumnSeparator: ',', arrayRowSeparator: ';',
+  caseSensitive: false, useWildcards: true, useRegularExpressions: false, matchWholeCell: true,
+  useArrayArithmetic: true, ignoreWhiteSpace: 'any', evaluateNullToZero: true, leapYear1900: true,
+  nullDate: {year: 1899, month: 12, day: 31},
+};
+// Contenido de una celda tal como lo entrega Excel (fórmula en inglés o valor) en el formato del motor
+function aMotor(f) {
+  if (f === '' || f === null || f === undefined) return null;
+  if (typeof f === 'string' && !f.startsWith('=')) return "'" + f; // texto literal: que no se interprete como número o fecha
+  return f;
+}
+const cerca = (a, b) => Math.abs(a - b) <= 1e-7 * Math.max(1, Math.abs(b));
+// ¿El valor calculado por el motor es el mismo que tiene la celda en Excel?
+function coincide(mio, excel) {
+  if (typeof excel === 'number') return typeof mio === 'number' && cerca(mio, excel);
+  if (mio && typeof mio === 'object') return typeof excel === 'string' && excel.startsWith('#'); // error en ambos
+  if (excel === '') return mio === null || mio === '';
+  return mio === excel;
+}
+let cargaMotor = null;
+const cargarMotor = () => cargaMotor || (cargaMotor = new Promise((ok, no) => {
+  const s = document.createElement('script');
+  s.src = 'hyperformula.min.js';
+  s.onload = () => { const H = window.HyperFormula; H ? ok(H.HyperFormula || H) : no(new Error('el motor de cálculo no se cargó')); };
+  s.onerror = () => { cargaMotor = null; no(new Error('no se pudo descargar el motor de cálculo')); };
+  document.head.appendChild(s);
+}));
+// Construye el modelo en el motor y comprueba que cada fórmula dé lo mismo que en Excel con los valores actuales.
+// Si algo no coincide (función no soportada, referencia que no se pudo leer…) lanza un error con el motivo
+async function prepararMotor(mod) {
+  if (!mod.completo) throw new Error('no se pudieron leer todas las celdas de las que dependen los pronósticos');
+  const HF = await cargarMotor(), hojas = {};
+  for (const c of mod.celdas.values()) {
+    const h = hojas[c.hoja] || (hojas[c.hoja] = []);
+    (h[c.fila] || (h[c.fila] = []))[c.col] = aMotor(esFormula(c.f) ? c.f : c.v);
+  }
+  for (const n in hojas) hojas[n] = Array.from(hojas[n], fila => Array.from(fila || [], x => (x === undefined ? null : x)));
+  const hf = HF.buildFromSheets(hojas, CONFIG_HF);
+  const texto = x => (x && typeof x === 'object' ? x.value : typeof x === 'number' ? fmt(x) : JSON.stringify(x));
+  for (const [k, c] of mod.celdas) {
+    if (!esFormula(c.f)) continue;
+    const mio = hf.getCellValue({sheet: hf.getSheetId(c.hoja), row: c.fila, col: c.col});
+    if (!coincide(mio, c.v)) { hf.destroy(); throw new Error(`la celda ${k} da ${texto(mio)} en el cálculo interno y ${texto(c.v)} en Excel`); }
+  }
+  const dir = celda => {
+    const [hoja, a1] = partir(celda), m = /^([A-Z]+)(\d+)$/.exec(a1.replace(/\$/g, '').toUpperCase()), sheet = hf.getSheetId(hoja);
+    if (!m || sheet === undefined) throw new Error(`la celda ${celda} no está en el modelo`);
+    return {sheet, col: colNum(m[1]) - 1, row: +m[2] - 1};
+  };
+  return {hf, dir};
+}
+
+// ---------- Simulación ----------
 async function simular(avance) {
   const sup = modelo.supuestos, pro = modelo.pronosticos, n = modelo.iter, k = sup.length, m = pro.length;
   if (!k) throw new Error('Define al menos un supuesto.');
@@ -747,15 +825,17 @@ async function simular(avance) {
   const ins = sup.map(() => new Float64Array(n)), outs = pro.map(() => new Float64Array(n));
   for (let t = 0; t < n; t++) for (let i = 0; i < k; i++) ins[i][t] = muestrear(sup[i].dist, sup[i].p, rng);
   const caso = t => ins.map(a => a[t]);
-  const vivo = !!modelo.vivo;
+  const vivo = !!modelo.vivo, fin = Number.isFinite;
+  const detenido = () => Object.assign(new Error('Simulación detenida.'), {detenida: true});
+  const noNumerico = (j, v) => Object.assign(new Error(`El pronóstico «${pro[j].nombre}» dio un valor no numérico (${v === '' ? 'celda vacía' : v}).`), {delModelo: true});
 
-  let originales, base, manual, sondeadas = [];
+  let originales, base, manual, porRestaurar = [], entradas = [], motor = null;
   const restaurar = async () => {
     for (let intento = 0; ; intento++) {
       try {
         return await Excel.run(async ctx => {
           sup.forEach((s, i) => { rango(ctx, s.celda).formulas = originales[i]; });
-          for (const v of sondeadas) rango(ctx, v.celda).formulas = [[v.orig]];
+          for (const v of porRestaurar) rango(ctx, v.celda).formulas = [[v.orig]];
           await ctx.sync();
         });
       } catch (e) {
@@ -773,7 +853,18 @@ async function simular(avance) {
     manual = ctx.application.calculationMode === 'Manual';
   });
 
-  // Escribe cada caso en las celdas de entrada y lee los pronósticos ya recalculados
+  // Con la hoja todavía intacta se lee el modelo y, si se puede, se prepara el cálculo interno
+  let mod = null, motivo = '';
+  if (modelo.precedentes || modelo.rapido) {
+    estado('Leyendo el modelo…');
+    try { mod = await leerModelo(sup, pro); } catch (e) { motivo = mensaje(e); }
+  }
+  if (modelo.rapido) {
+    if (vivo) motivo = 'está activado «Ver la simulación mientras corre»';
+    else if (mod) try { estado('Preparando el modo rápido…'); motor = await prepararMotor(mod); } catch (e) { motor = null; motivo = mensaje(e); }
+  }
+
+  // Excel: escribe cada caso en las celdas de entrada y lee los pronósticos ya recalculados
   const evaluar = casos => Excel.run(async ctx => {
     const rs = sup.map(s => rango(ctx, s.celda)), lecturas = [];
     if (!vivo) ctx.application.suspendScreenUpdatingUntilNextSync();
@@ -785,19 +876,58 @@ async function simular(avance) {
     await ctx.sync();
     return lecturas.map(fila => fila.map((r, j) => {
       const v = r.values[0][0];
-      if (typeof v !== 'number') throw Object.assign(new Error(`El pronóstico «${pro[j].nombre}» dio un valor no numérico (${v === '' ? 'celda vacía' : v}).`), {delModelo: true});
+      if (typeof v !== 'number') throw noNumerico(j, v);
       return v;
     }));
   });
 
   try {
-    // La primera iteración se evalúa sola y sirve para comprobar que la lectura por lotes es fiable
+    // La primera iteración se evalúa sola en Excel y sirve de referencia para las comprobaciones
     const r0 = (await evaluar([caso(0)]))[0];
-    let lote = vivo ? 10 : 200;
+    let lote = vivo ? 10 : 200, t = 0;
     const conPrec = modelo.detenerPrec ? pro.map((p, j) => (p.prec ? j : -1)).filter(j => j >= 0) : [];
-    let t = 0;
-    while (t < n) {
-      if (cancelar) throw new Error('Simulación detenida.');
+    const alcanzada = () => t >= 100 && conPrec.length && conPrec.every(j => precision(outs[j], t, pro[j].prec.conf, pro[j].prec.err).ok);
+
+    // Cálculo interno: mismas operaciones que en Excel, pero sobre el modelo cargado en el motor
+    let leerLocal, local, dSup;
+    if (motor) try {
+      const hf = motor.hf, dPro = pro.map(p => motor.dir(p.celda));
+      dSup = sup.map(s => motor.dir(s.celda));
+      leerLocal = () => dPro.map(d => { const v = hf.getCellValue(d); return typeof v === 'number' ? v : NaN; });
+      local = c => {
+        hf.suspendEvaluation();
+        for (let i = 0; i < k; i++) hf.setCellContents(dSup[i], [[c[i]]]);
+        hf.resumeEvaluation();
+        return leerLocal();
+      };
+      // Antes de confiar en él se compara con Excel en varias iteraciones de esta misma simulación
+      const prueba = [...new Set([0, Math.floor(n / 3), Math.floor(2 * n / 3), n - 1])];
+      const enExcel = [r0, ...await evaluar(prueba.slice(1).map(caso))];
+      prueba.forEach((u, q) => local(caso(u)).forEach((v, j) => {
+        if (!fin(v) || !cerca(v, enExcel[q][j])) throw new Error(`el pronóstico «${pro[j].nombre}» da ${fmt(v)} en el cálculo interno y ${fmt(enExcel[q][j])} en Excel con los mismos datos`);
+      }));
+    } catch (e) {
+      if (e.delModelo) throw e;
+      motor.hf.destroy(); motor = null; motivo = mensaje(e);
+    }
+
+    if (motor) {
+      await restaurar(); // la hoja ya no se toca durante la simulación
+      while (t < n) {
+        if (cancelar) throw detenido();
+        const hasta = Math.min(n, t + 250);
+        for (let u = t; u < hasta; u++) {
+          const r = local(caso(u));
+          for (let j = 0; j < m; j++) { if (!fin(r[j])) throw noNumerico(j, 'error de cálculo'); outs[j][u] = r[j]; }
+        }
+        t = hasta;
+        avance(t, n, outs[0]);
+        if (alcanzada()) break;
+        await new Promise(r => setTimeout(r)); // deja respirar a la interfaz
+      }
+      sup.forEach((s, i) => motor.hf.setCellContents(dSup[i], [[aMotor(originales[i][0][0])]]));
+    } else while (t < n) {
+      if (cancelar) throw detenido();
       const hasta = Math.min(n, t + lote), casos = [];
       for (let u = t; u < hasta; u++) casos.push(caso(u));
       // Si Excel tarda o corta la petición (Timeout), se reintenta con lotes más pequeños
@@ -806,17 +936,18 @@ async function simular(avance) {
       try { res = await evaluar(casos); }
       catch (e) { if (e.delModelo || lote <= 1) throw e; lote = Math.max(1, lote >> 2); continue; }
       if (performance.now() - ini > 4000 && lote > 10) lote = Math.max(10, lote >> 1);
+      // Si la lectura por lotes no reproduce la primera iteración, se evalúa de una en una
       if (t === 0 && lote > 1 && res[0].some((v, j) => Math.abs(v - r0[j]) > 1e-9 * Math.max(1, Math.abs(r0[j])))) { lote = 1; continue; }
       for (let u = t; u < hasta; u++) for (let j = 0; j < m; j++) outs[j][u] = res[u - t][j];
       t = hasta;
       avance(t, n, outs[0]);
-      if (t >= 100 && conPrec.length && conPrec.every(j => precision(outs[j], t, pro[j].prec.conf, pro[j].prec.err).ok)) break;
+      if (alcanzada()) break;
     }
     const N = t, insN = ins.map(a => a.subarray(0, N)), outsN = outs.map(a => a.subarray(0, N));
 
-    // Sensibilidad estática (tornado y araña): con la hoja en su caso base, se mueve una sola entrada a la vez
+    // Sensibilidad estática (tornado y araña): con el modelo en su caso base, se mueve una sola entrada a la vez
     // y se lee cada pronóstico. grupos: [{v, xs}] prueba la entrada v con los valores xs; sin v lee el caso base
-    const sondear = grupos => Excel.run(async ctx => {
+    const sondearExcel = grupos => Excel.run(async ctx => {
       const lect = [];
       const leer = () => {
         if (manual) ctx.application.calculate('Recalculate');
@@ -834,10 +965,17 @@ async function simular(avance) {
       let q = 0;
       return grupos.map(({v, xs}) => (v ? xs : [0]).map(() => lect[q++].map(r => (typeof r.values[0][0] === 'number' ? r.values[0][0] : NaN))));
     });
+    const sondearLocal = async grupos => grupos.map(({v, xs}) => {
+      if (!v) return [leerLocal()];
+      const d = motor.dir(v.celda), res = xs.map(x => { motor.hf.setCellContents(d, [[x]]); return leerLocal(); });
+      motor.hf.setCellContents(d, [[aMotor(v.orig)]]);
+      return res;
+    });
+    const sondear = motor ? sondearLocal : sondearExcel;
     const porTandas = async (lista, niveles, guardarEn, texto) => {
-      let tam = Math.max(1, Math.floor(Math.min(lote, 60) / niveles.length));
+      let tam = motor ? 100 : Math.max(1, Math.floor(Math.min(lote, 60) / niveles.length));
       for (let a = 0; a < lista.length;) {
-        if (cancelar) throw new Error('Simulación detenida.');
+        if (cancelar) throw detenido();
         estado(`${texto} ${a.toLocaleString('es')} de ${lista.length.toLocaleString('es')} entradas`);
         const tanda = lista.slice(a, a + tam), ini = performance.now();
         let res;
@@ -846,20 +984,23 @@ async function simular(avance) {
         if (performance.now() - ini > 4000 && tam > 1) tam = Math.max(1, tam >> 1);
         tanda.forEach((v, i) => guardarEn(v, res[i]));
         a += tanda.length;
+        if (motor) await new Promise(r => setTimeout(r));
       }
     };
 
-    const extremos = [NIV[0], NIV[NIV.length - 1]], medios = NIV.slice(1, -1), fin = Number.isFinite;
-    let baseOut = pro.map(() => NaN), total = 0, aviso = '';
-    const afecta = j => sondeadas.filter(v => v.lo && fin(baseOut[j]) && fin(v.lo[j]) && fin(v.hi[j]) && (v.lo[j] !== baseOut[j] || v.hi[j] !== baseOut[j]))
+    const extremos = [NIV[0], NIV[NIV.length - 1]], medios = NIV.slice(1, -1);
+    let baseOut = pro.map(() => NaN), total = 0, aviso = mod ? mod.aviso : '';
+    const afecta = j => entradas.filter(v => v.lo && fin(baseOut[j]) && fin(v.lo[j]) && fin(v.hi[j]) && (v.lo[j] !== baseOut[j] || v.hi[j] !== baseOut[j]))
       .sort((a, b) => Math.abs(b.hi[j] - b.lo[j]) - Math.abs(a.hi[j] - a.lo[j]));
     try {
       await restaurar();
-      estado('Buscando las celdas de entrada del modelo…');
-      const ent = await entradasModelo(sup, pro, originales, base);
-      sondeadas = ent.lista; total = ent.total; aviso = ent.aviso;
+      const ent = entradasModelo(sup, pro, originales, base, mod, motor ? MAX_ENTRADAS_RAPIDO : MAX_ENTRADAS);
+      estado('Buscando los nombres de las celdas de entrada…');
+      await nombrar(ent.lista);
+      entradas = ent.lista; total = ent.total;
+      if (!motor) porRestaurar = entradas; // en modo rápido la hoja no se toca
       baseOut = (await sondear([{v: null}]))[0][0];
-      await porTandas(sondeadas, extremos, (v, r) => { v.lo = r[0]; v.hi = r[1]; }, 'Analizando sensibilidad…');
+      await porTandas(entradas, extremos, (v, r) => { v.lo = r[0]; v.hi = r[1]; }, 'Analizando sensibilidad…');
       // Los niveles intermedios solo hacen falta para las entradas que se dibujan en la araña
       const enArana = [...new Set(pro.flatMap((p, j) => afecta(j).slice(0, PALETA.length)))];
       await porTandas(enArana, medios, (v, r) => { v.mid = r; }, 'Calculando el gráfico de araña…');
@@ -868,9 +1009,9 @@ async function simular(avance) {
       if (cancelar) throw e;
       aviso = `El análisis de tornado quedó incompleto (${mensaje(e)}).`;
     }
-
     return {
-      n: N, pedidas: n, detenida: N < n, entradas: sondeadas.filter(v => v.lo).length, entradasTotal: total, aviso,
+      n: N, pedidas: n, detenida: N < n, entradas: entradas.filter(v => v.lo).length, entradasTotal: total, aviso,
+      modo: motor ? 'rapido' : 'excel', motivo,
       salidas: pro.map((p, j) => {
         const datos = Float64Array.from(outsN[j]).sort(), ry = rangos(outsN[j]);
         return {
@@ -886,6 +1027,7 @@ async function simular(avance) {
       }),
     };
   } finally {
+    if (motor) motor.hf.destroy();
     await restaurar();
   }
 }
@@ -909,8 +1051,10 @@ async function correr() {
     corridas.unshift(compactar(res, 1001, 40));
     corridas.length = Math.min(corridas.length, MAX_CORRIDAS);
     const seg = dec((performance.now() - t0) / 1000, 1);
-    estado(res.detenida ? `Se detuvo en ${res.n.toLocaleString('es')} de ${res.pedidas.toLocaleString('es')} iteraciones (${seg} s) porque ya se alcanzó la precisión pedida en los pronósticos. Para correrlas todas, apaga «Detener antes de completar las iteraciones…» en Simulación.`
-      : `Listo: ${res.n.toLocaleString('es')} iteraciones en ${seg} s.` + (res.aviso ? ' ' + res.aviso : ''), 'ok');
+    estado((res.detenida ? `Se detuvo en ${res.n.toLocaleString('es')} de ${res.pedidas.toLocaleString('es')} iteraciones (${seg} s) porque ya se alcanzó la precisión pedida en los pronósticos. Para correrlas todas, apaga «Detener antes de completar las iteraciones…» en Simulación.`
+      : `Listo: ${res.n.toLocaleString('es')} iteraciones en ${seg} s.`)
+      + (res.modo === 'rapido' ? ' Modo rápido, verificado contra Excel.' : modelo.rapido && res.motivo ? ` Se usó el modo normal porque ${res.motivo}.` : '')
+      + (res.aviso ? ' ' + res.aviso : ''), 'ok');
     pintarResultados(); vista('resultados');
     await guardar(); await guardarCorridas();
   } catch (e) { estado(mensaje(e), 'err'); }
