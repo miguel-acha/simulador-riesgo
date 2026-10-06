@@ -110,6 +110,11 @@ body.dlg main{padding:18px;max-width:1200px;margin:0 auto;width:100%}
 body.dlg{font-size:14px}body.dlg table{font-size:13px}
 body.dlg #hist{height:340px}
 body.dlg #arana{height:300px}
+.tabla{display:none;margin-top:10px}
+body.dlg .tabla{display:table}
+.tabla th{text-align:right;font-weight:600;color:var(--muted);padding:4px 0 4px 10px;border-bottom:1px solid var(--line)}
+.tabla th:first-child,.tabla td:first-child{text-align:left;padding-left:0}
+.tabla td{text-align:right;font-variant-numeric:tabular-nums;padding-left:10px;font-weight:400}
 body.dlg #cuerpo{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 28px}
 body.dlg .bar{grid-template-columns:150px 1fr 100px}
 </style>
@@ -150,6 +155,7 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
         <label class="campo">Semilla (opcional)<input id="semilla" type="number" step="1" placeholder="aleatoria"></label>
       </div>
       <label class="sw" id="swParar" hidden><input type="checkbox" id="pararPrec"><i></i>Detener antes de completar las iteraciones si se alcanza la precisión pedida</label>
+      <label class="sw"><input type="checkbox" id="precedentes"><i></i>Tornado y araña con todas las celdas de entrada del modelo, no solo los supuestos</label>
       <label class="sw"><input type="checkbox" id="vivo"><i></i>Ver la simulación mientras corre (más lento)</label>
       <label class="sw"><input type="checkbox" id="colorear"><i></i>Colorear las celdas marcadas</label>
     </div>
@@ -189,7 +195,9 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
           <p class="legend">Entre paréntesis: contribución a la varianza.</p>
           <h3>Tornado (cada entrada ±10 %, de mayor a menor efecto)</h3>
           <div class="bars" id="tornado"></div>
-          <p class="legend"><b style="background:var(--neg)"></b>entrada −10 %<b style="background:var(--pos)"></b>entrada +10 %</p>
+          <p class="legend"><b style="background:var(--neg)"></b>entrada −10 %<b style="background:var(--pos)"></b>entrada +10 %<b style="background:var(--sup);border-radius:50%"></b>ya es un supuesto</p>
+          <p class="legend" id="torNota"></p>
+          <table class="tabla" id="torTabla"></table>
           <h3>Gráfico de araña (cada entrada de −10 % a +10 %)</h3>
           <canvas id="arana"></canvas>
           <p class="legend" id="aranaLeg"></p>
@@ -431,13 +439,13 @@ function miniHist(cv, valores, n) {
 }
 
 // ---------- Estado (se guarda dentro del libro) ----------
-const CLAVE = 'simulador-riesgo', CLAVE_C = 'simulador-riesgo-corridas', MAX_CORRIDAS = 15;
+const CLAVE = 'simulador-riesgo', CLAVE_C = 'simulador-riesgo-corridas', MAX_CORRIDAS = 15, MAX_ENTRADAS = 200, TOR_VISIBLES = 15;
 const COLOR_SUP = '#A9E5A3', COLOR_PRO = '#A8C7FA', OPC_ITER = [500, 1000, 2000, 5000, 10000];
 // Variación de cada entrada respecto al caso base (%), de menor a mayor, para el tornado y la araña
 const NIV = [-10, -5, 5, 10];
 const PALETA = ['#2563eb', '#d9534f', '#e69f00', '#009e73', '#cc79a7', '#56b4e9', '#7c3aed', '#6b7280'];
-let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, detenerPrec: false, contador: 0};
-let corridas = [], resultado = null, sel = 0, cancelar = false, selDir = null;
+let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, detenerPrec: false, precedentes: true, contador: 0};
+let corridas = [], resultado = null, sel = 0, cancelar = false, selDir = null, torTodo = false;
 let cert = {tipo: 'dos', lo: -Infinity, hi: Infinity}, geo = null;
 
 function partir(dir) {
@@ -546,7 +554,7 @@ function pintarListas() {
 function pintarOpciones() {
   $('chips').innerHTML = OPC_ITER.map(n => `<button class="chip${n === modelo.iter ? ' on' : ''}" data-iter="${n}">${n.toLocaleString('es')}</button>`).join('');
   $('iter').value = modelo.iter; $('semilla').value = modelo.semilla;
-  $('vivo').checked = !!modelo.vivo; $('colorear').checked = !!modelo.colorear; $('pararPrec').checked = !!modelo.detenerPrec;
+  $('vivo').checked = !!modelo.vivo; $('colorear').checked = !!modelo.colorear; $('pararPrec').checked = !!modelo.detenerPrec; $('precedentes').checked = !!modelo.precedentes;
 }
 
 // ---------- Editor de supuestos y pronósticos ----------
@@ -645,6 +653,7 @@ function iniciarPanel() {
   $('semilla').onchange = e => { modelo.semilla = e.target.value; guardar(); };
   $('vivo').onchange = e => { modelo.vivo = e.target.checked; guardar(); };
   $('pararPrec').onchange = e => { modelo.detenerPrec = e.target.checked; guardar(); };
+  $('precedentes').onchange = e => { modelo.precedentes = e.target.checked; guardar(); };
   $('colorear').onchange = async e => { modelo.colorear = e.target.checked; await repintarTodo(); guardar(); };
   $('run').onclick = correr;
   $('cancel').onclick = () => { cancelar = true; };
@@ -662,6 +671,67 @@ function iniciarPanel() {
   });
 }
 
+// ---------- Celdas de entrada del modelo ----------
+const colNum = l => [...l].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0);
+const colLetra = n => { let l = ''; for (; n > 0; n = Math.floor((n - 1) / 26)) l = String.fromCharCode(65 + (n - 1) % 26) + l; return l; };
+const claveCelda = dir => { const [h, a] = partir(dir); return h + '!' + a.replace(/\$/g, '').toUpperCase(); };
+
+// Entradas para el tornado: los supuestos y, si se pide, todas las celdas con un número fijo de las que
+// dependen los pronósticos (sus precedentes), como hace el análisis de tornado de Risk Simulator
+async function entradasModelo(sup, pro, originales, base) {
+  const vars = new Map();
+  sup.forEach((s, i) => {
+    if (typeof base[i] === 'number' && base[i] !== 0) vars.set(claveCelda(s.celda), {celda: s.celda, nombre: s.nombre, base: base[i], orig: originales[i][0][0], sup: true});
+  });
+  if (modelo.precedentes && Office.context.requirements.isSetSupported('ExcelApi', '1.14')) {
+    const propias = new Set(pro.map(p => claveCelda(p.celda)));
+    for (const p of pro) {
+      try { // un pronóstico sin precedentes hace fallar la consulta; se ignora
+        await Excel.run(async ctx => {
+          const grupo = rango(ctx, p.celda).getPrecedents();
+          grupo.areas.load('items'); await ctx.sync();
+          grupo.areas.items.forEach(a => a.areas.load('items/address,items/cellCount')); await ctx.sync();
+          // Se descartan referencias enormes (columnas o filas enteras)
+          const rs = grupo.areas.items.flatMap(a => a.areas.items).filter(r => r.cellCount <= 5000);
+          rs.forEach(r => r.load('formulas,values')); await ctx.sync();
+          for (const r of rs) {
+            const corte = r.address.lastIndexOf('!'), prefijo = r.address.slice(0, corte + 1);
+            const m = /^\$?([A-Z]+)\$?(\d+)/.exec(r.address.slice(corte + 1));
+            if (!m) continue;
+            const c0 = colNum(m[1]), f0 = +m[2];
+            r.formulas.forEach((fila, i) => fila.forEach((f, j) => {
+              const v = r.values[i][j];
+              if (typeof f !== 'number' || typeof v !== 'number' || v === 0) return; // solo números fijos, no fórmulas
+              const dir = prefijo + colLetra(c0 + j) + (f0 + i), k = claveCelda(dir);
+              if (!vars.has(k) && !propias.has(k)) vars.set(k, {celda: dir, base: v, orig: f, fila: f0 + i - 1, col: c0 + j - 1});
+            }));
+          }
+        });
+      } catch {}
+    }
+  }
+  const total = vars.size, lista = [...vars.values()].slice(0, MAX_ENTRADAS);
+  // Nombre de cada celda nueva: el texto más cercano a su izquierda, igual que al definir un supuesto
+  const sinNombre = lista.filter(v => !v.nombre);
+  try {
+    await Excel.run(async ctx => {
+      const izq = sinNombre.map(v => {
+        if (!v.col) return null;
+        const r = ctx.workbook.worksheets.getItem(partir(v.celda)[0]).getRangeByIndexes(v.fila, 0, 1, v.col);
+        r.load('values'); return r;
+      });
+      await ctx.sync();
+      sinNombre.forEach((v, i) => { if (izq[i]) for (const t of izq[i].values[0]) if (typeof t === 'string' && t.trim()) v.etiqueta = t.trim(); });
+    });
+  } catch {}
+  const variasHojas = new Set(lista.map(v => partir(v.celda)[0])).size > 1;
+  for (const v of sinNombre) {
+    const [hoja, a1] = partir(v.celda), donde = variasHojas ? hoja + '!' + a1 : a1;
+    v.nombre = v.etiqueta ? `${v.etiqueta} (${donde})` : donde;
+  }
+  return {lista, total};
+}
+
 // ---------- Simulación sobre la hoja ----------
 async function simular(avance) {
   const sup = modelo.supuestos, pro = modelo.pronosticos, n = modelo.iter, k = sup.length, m = pro.length;
@@ -675,7 +745,12 @@ async function simular(avance) {
   const caso = t => ins.map(a => a[t]);
   const vivo = !!modelo.vivo;
 
-  let originales, base, manual;
+  let originales, base, manual, sondeadas = [];
+  const restaurar = () => Excel.run(async ctx => {
+    sup.forEach((s, i) => { rango(ctx, s.celda).formulas = originales[i]; });
+    for (const v of sondeadas) rango(ctx, v.celda).formulas = [[v.orig]];
+    await ctx.sync();
+  });
   await Excel.run(async ctx => {
     const rs = sup.map(s => rango(ctx, s.celda));
     rs.forEach(r => r.load('formulas,values'));
@@ -722,35 +797,68 @@ async function simular(avance) {
     }
     const N = t, insN = ins.map(a => a.subarray(0, N)), outsN = outs.map(a => a.subarray(0, N));
 
-    // Tornado y araña: caso base (valores actuales de la hoja) y cada entrada en los niveles de NIV
-    let tornado = [], baseOut = null;
-    if (base.every(v => typeof v === 'number')) {
-      const numericos = base.map((v, i) => (v !== 0 ? i : -1)).filter(i => i >= 0), casos = [base];
-      for (const i of numericos) for (const f of NIV) { const b = base.slice(); b[i] = base[i] * (1 + f / 100); casos.push(b); }
-      const res = [];
-      for (let a = 0; a < casos.length; a += lote) res.push(...await evaluar(casos.slice(a, a + lote)));
-      baseOut = res[0];
-      tornado = numericos.map((i, q) => ({nombre: sup[i].nombre, niv: NIV.map((_, a) => res[1 + NIV.length * q + a])}));
-    }
+    // Sensibilidad estática (tornado y araña): con la hoja en su caso base, se mueve una sola entrada a la vez
+    // y se lee cada pronóstico. grupos: [{v, xs}] prueba la entrada v con los valores xs; sin v lee el caso base
+    const sondear = grupos => Excel.run(async ctx => {
+      const lect = [];
+      const leer = () => {
+        if (manual) ctx.application.calculate('Recalculate');
+        lect.push(pro.map(p => { const r = rango(ctx, p.celda); r.load('values'); return r; }));
+      };
+      if (!vivo) ctx.application.suspendScreenUpdatingUntilNextSync();
+      for (const {v, xs} of grupos) {
+        if (!v) { leer(); continue; }
+        const r = rango(ctx, v.celda);
+        for (const x of xs) { r.values = [[x]]; leer(); }
+        r.formulas = [[v.orig]];
+      }
+      if (manual) ctx.application.calculate('Recalculate');
+      await ctx.sync();
+      let q = 0;
+      return grupos.map(({v, xs}) => (v ? xs : [0]).map(() => lect[q++].map(r => (typeof r.values[0][0] === 'number' ? r.values[0][0] : NaN))));
+    });
+    const porTandas = async (lista, niveles, guardarEn, texto) => {
+      const tam = Math.max(1, Math.floor(lote / niveles.length));
+      for (let a = 0; a < lista.length; a += tam) {
+        if (cancelar) throw new Error('Simulación detenida.');
+        estado(`${texto} ${a.toLocaleString('es')} de ${lista.length.toLocaleString('es')} entradas`);
+        const tanda = lista.slice(a, a + tam);
+        const res = await sondear(tanda.map(v => ({v, xs: niveles.map(f => v.base * (1 + f / 100))})));
+        tanda.forEach((v, i) => guardarEn(v, res[i]));
+      }
+    };
+
+    await restaurar();
+    estado('Buscando las celdas de entrada del modelo…');
+    const ent = await entradasModelo(sup, pro, originales, base);
+    sondeadas = ent.lista;
+    const baseOut = (await sondear([{v: null}]))[0][0];
+    const extremos = [NIV[0], NIV[NIV.length - 1]], medios = NIV.slice(1, -1), fin = Number.isFinite;
+    await porTandas(sondeadas, extremos, (v, r) => { v.lo = r[0]; v.hi = r[1]; }, 'Analizando sensibilidad…');
+    const afecta = j => sondeadas.filter(v => fin(baseOut[j]) && fin(v.lo[j]) && fin(v.hi[j]) && (v.lo[j] !== baseOut[j] || v.hi[j] !== baseOut[j]))
+      .sort((a, b) => Math.abs(b.hi[j] - b.lo[j]) - Math.abs(a.hi[j] - a.lo[j]));
+    // Los niveles intermedios solo hacen falta para las entradas que se dibujan en la araña
+    const enArana = [...new Set(pro.flatMap((p, j) => afecta(j).slice(0, PALETA.length)))];
+    await porTandas(enArana, medios, (v, r) => { v.mid = r; }, 'Calculando el gráfico de araña…');
 
     return {
-      n: N, pedidas: n, detenida: N < n,
+      n: N, pedidas: n, detenida: N < n, entradas: sondeadas.length, entradasTotal: ent.total,
       salidas: pro.map((p, j) => {
         const datos = Float64Array.from(outsN[j]).sort(), ry = rangos(outsN[j]);
         return {
           nombre: p.nombre, datos, stats: resumen(datos),
           sens: sup.map((s, i) => ({nombre: s.nombre, r: pearson(rangos(insN[i]), ry)})).sort((a, b) => Math.abs(b.r) - Math.abs(a.r)),
           prec: precision(outsN[j], N, p.prec ? p.prec.conf : 95, p.prec ? p.prec.err : NaN),
-          base: baseOut ? baseOut[j] : null,
-          tornado: tornado.map(x => ({nombre: x.nombre, lo: x.niv[0][j], hi: x.niv[NIV.length - 1][j], y: x.niv.map(r => r[j])})),
+          base: fin(baseOut[j]) ? baseOut[j] : null,
+          tornado: afecta(j).map(v => {
+            const y = v.mid && [v.lo[j], ...v.mid.map(r => r[j]), v.hi[j]];
+            return {nombre: v.nombre, celda: corta(v.celda), b: v.base, sup: v.sup ? 1 : undefined, lo: v.lo[j], hi: v.hi[j], y: y && y.every(fin) ? y : undefined};
+          }),
         };
       }),
     };
   } finally {
-    await Excel.run(async ctx => {
-      sup.forEach((s, i) => { rango(ctx, s.celda).formulas = originales[i]; });
-      await ctx.sync();
-    });
+    await restaurar();
   }
 }
 
@@ -769,8 +877,8 @@ async function correr() {
     });
     modelo.contador = (modelo.contador || 0) + 1;
     res.nombre = 'Corrida ' + modelo.contador; res.fecha = new Date().toISOString();
-    resultado = res; sel = 0;
-    corridas.unshift(compactar(res, 1001));
+    resultado = res; sel = 0; torTodo = false;
+    corridas.unshift(compactar(res, 1001, 40));
     corridas.length = Math.min(corridas.length, MAX_CORRIDAS);
     const seg = dec((performance.now() - t0) / 1000, 1);
     estado(res.detenida ? `Se detuvo en ${res.n.toLocaleString('es')} de ${res.pedidas.toLocaleString('es')} iteraciones (${seg} s) porque ya se alcanzó la precisión pedida en los pronósticos. Para correrlas todas, apaga «Detener antes de completar las iteraciones…» en Simulación.`
@@ -782,12 +890,12 @@ async function correr() {
 }
 
 // Reduce cada pronóstico a un número fijo de puntos ordenados (para guardar o enviar a la ventana)
-function compactar(res, maxPts) {
+function compactar(res, maxPts, maxTor = Infinity) {
   return {...res, salidas: res.salidas.map(S => {
     const d = S.datos, datos = [];
     if (d.length <= maxPts) for (const v of d) datos.push(+v.toPrecision(8));
     else for (let i = 0; i < maxPts; i++) datos.push(+d[Math.round(i * (d.length - 1) / (maxPts - 1))].toPrecision(8));
-    return {...S, datos};
+    return {...S, datos, tornado: efectos(S).slice(0, maxTor)};
   })};
 }
 
@@ -829,20 +937,31 @@ function pintarResultados() {
       <span class="val">${dec(x.r, 2)} (${dec(100 * x.r * x.r / sum2, 0)} %)</span></div>`;
   }).join('');
 
-  const b0 = S.base;
-  const tor = efectos(S);
-  let gMin = b0, gMax = b0;
-  for (const t of tor) { gMin = Math.min(gMin, t.lo, t.hi); gMax = Math.max(gMax, t.lo, t.hi); }
-  const pos = x => gMax > gMin ? 100 * (x - gMin) / (gMax - gMin) : 50;
-  const seg = (v, tono) => `<i style="left:${Math.min(pos(v), pos(b0))}%;width:${Math.abs(pos(v) - pos(b0))}%;background:var(${tono})"></i>`;
-  $('tornado').innerHTML = tor.map(t => `<div class="bar"><span class="nm" title="${esc(t.nombre)}">${esc(t.nombre)}</span>
-      <div class="track">${seg(t.lo, '--neg')}${seg(t.hi, '--pos')}<i class="mid" style="left:${pos(b0)}%"></i></div>
-      <span class="val" title="de ${fmt(t.lo)} a ${fmt(t.hi)}">±${fmt(Math.abs(t.hi - t.lo) / 2)}</span></div>`).join('')
-    + (tor.length ? `<p class="legend">Caso base: ${fmt(b0)}</p>` : '<p class="vacio">No disponible para este pronóstico.</p>');
+  pintarTornado();
   arana();
   fijarCerteza(90);
 }
 
+function pintarTornado() {
+  const S = resultado.salidas[sel], b0 = S.base, todas = efectos(S), tor = torTodo ? todas : todas.slice(0, TOR_VISIBLES);
+  let gMin = b0, gMax = b0;
+  for (const t of tor) { gMin = Math.min(gMin, t.lo, t.hi); gMax = Math.max(gMax, t.lo, t.hi); }
+  const pos = x => gMax > gMin ? 100 * (x - gMin) / (gMax - gMin) : 50;
+  const seg = (v, tono) => `<i style="left:${Math.min(pos(v), pos(b0))}%;width:${Math.abs(pos(v) - pos(b0))}%;background:var(${tono})"></i>`;
+  const marca = t => (t.sup ? '<i class="dot" style="background:var(--sup);width:7px;height:7px;border-radius:50%;margin-right:4px"></i>' : '');
+  const detalle = t => esc(t.nombre + (t.b === undefined ? '' : ` — valor base ${fmt(t.b)}; se probó con ${fmt(t.b * (1 + NIV[0] / 100))} y ${fmt(t.b * (1 + NIV[NIV.length - 1] / 100))}`));
+  $('tornado').innerHTML = tor.map(t => `<div class="bar"><span class="nm" title="${detalle(t)}">${marca(t)}${esc(t.nombre)}</span>
+      <div class="track">${seg(t.lo, '--neg')}${seg(t.hi, '--pos')}<i class="mid" style="left:${pos(b0)}%"></i></div>
+      <span class="val" title="de ${fmt(t.lo)} a ${fmt(t.hi)}">±${fmt(Math.abs(t.hi - t.lo) / 2)}</span></div>`).join('')
+    + (todas.length > TOR_VISIBLES ? `<button class="mini" id="torMas" style="justify-self:start">${torTodo ? `Ver solo las ${TOR_VISIBLES} principales` : `Ver las ${todas.length} entradas`}</button>` : '')
+    + (tor.length ? '' : '<p class="vacio">No disponible para este pronóstico.</p>');
+  $('torNota').textContent = !tor.length ? '' : `Caso base: ${fmt(b0)}.`
+    + (resultado.entradas ? ` Se probaron ${resultado.entradas.toLocaleString('es')} celdas de entrada, una a la vez; ${todas.length.toLocaleString('es')} mueven este pronóstico.` : '')
+    + (resultado.entradasTotal > resultado.entradas ? ` El modelo tiene ${resultado.entradasTotal.toLocaleString('es')}; se analizaron solo las primeras.` : '');
+  const signo = NIV[NIV.length - 1];
+  $('torTabla').innerHTML = !todas.length ? '' : `<tr><th>Entrada</th><th>Valor base</th><th>Resultado con −${signo} %</th><th>Resultado con +${signo} %</th><th>Rango</th></tr>`
+    + todas.map(t => `<tr><td>${marca(t)}${esc(t.nombre)}</td><td>${t.b === undefined ? '—' : fmt(t.b)}</td><td>${fmt(t.lo)}</td><td>${fmt(t.hi)}</td><td>${fmt(Math.abs(t.hi - t.lo))}</td></tr>`).join('');
+}
 // Entradas que mueven el pronóstico al variarlas, de mayor a menor efecto
 function efectos(S) {
   return S.tornado.filter(t => t.lo !== S.base || t.hi !== S.base).sort((a, b) => Math.abs(b.hi - b.lo) - Math.abs(a.hi - a.lo));
@@ -952,6 +1071,7 @@ function iniciarResultados() {
     if (e.target.dataset.tab === undefined) return;
     sel = +e.target.dataset.tab; pintarResultados();
   });
+  $('tornado').addEventListener('click', e => { if (e.target.id === 'torMas') { torTodo = !torTodo; pintarTornado(); } });
   $('colas').onclick = e => {
     if (!e.target.dataset.cola || !resultado) return;
     cert.tipo = e.target.dataset.cola; fijarCerteza(90);
