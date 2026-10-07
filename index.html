@@ -89,6 +89,15 @@ td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-weight:600
 .track{position:relative;height:14px;background:var(--bg);border-radius:3px}
 .track i{position:absolute;top:0;bottom:0;border-radius:2px}
 .track .mid{width:1px;background:var(--muted)}
+.bar.tor{grid-template-columns:88px 1fr}
+.tor .track{background:none;height:18px}
+.tor .track i{border-radius:3px}
+.tor .t-lo{background:linear-gradient(#f4706c,#c9302c)}
+.tor .t-hi{background:linear-gradient(#63c874,#1e8e3e)}
+.tor .track span{position:absolute;top:50%;transform:translateY(-50%);padding:0 3px;font-size:10px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tor .eje{position:relative;height:20px;border-top:1px solid var(--muted)}
+.tor .eje span{position:absolute;top:3px;transform:translateX(-50%);font-size:10px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tor .eje span::before{content:"";position:absolute;left:50%;top:-4px;height:4px;border-left:1px solid var(--muted)}
 .legend{font-size:11px;color:var(--muted);margin:6px 0 0}
 .legend b{display:inline-block;width:9px;height:9px;border-radius:2px;margin:0 3px 0 8px}
 .tabs{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
@@ -118,6 +127,7 @@ body.dlg .tabla{display:table}
 .tabla td{text-align:right;font-variant-numeric:tabular-nums;padding-left:10px;font-weight:400}
 body.dlg #cuerpo{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 28px}
 body.dlg .bar{grid-template-columns:150px 1fr 100px}
+body.dlg .bar.tor{grid-template-columns:150px 1fr}
 </style>
 </head>
 <body>
@@ -203,7 +213,8 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
           <p class="legend">Entre paréntesis: contribución a la varianza.</p>
           <h3>Tornado (cada entrada ±10 %, de mayor a menor efecto)</h3>
           <div class="bars" id="tornado"></div>
-          <p class="legend"><b style="background:var(--neg)"></b>entrada −10 %<b style="background:var(--pos)"></b>entrada +10 %<b style="background:var(--sup);border-radius:50%"></b>ya es un supuesto</p>
+          <p class="legend"><b style="background:#c9302c"></b>entrada −10 %<b style="background:#1e8e3e"></b>entrada +10 %<b style="background:var(--sup);border-radius:50%"></b>ya es un supuesto</p>
+          <p class="legend">El número junto a cada barra es el valor de la entrada que se probó; el eje de abajo es el resultado del pronóstico.</p>
           <p class="legend" id="torNota"></p>
           <table class="tabla" id="torTabla"></table>
           <h3>Gráfico de araña (cada entrada de −10 % a +10 %)</h3>
@@ -1156,12 +1167,23 @@ function pintarTornado() {
   let gMin = b0, gMax = b0;
   for (const t of tor) { gMin = Math.min(gMin, t.lo, t.hi); gMax = Math.max(gMax, t.lo, t.hi); }
   const pos = x => gMax > gMin ? 100 * (x - gMin) / (gMax - gMin) : 50;
-  const seg = (v, tono) => `<i style="left:${Math.min(pos(v), pos(b0))}%;width:${Math.abs(pos(v) - pos(b0))}%;background:var(${tono})"></i>`;
+  // Se dejan márgenes a los lados para los valores de la entrada que van junto a cada barra
+  const P = x => 20 + 0.6 * pos(x), ultimo = NIV[NIV.length - 1];
+  const seg = (v, clase) => `<i class="${clase}" style="left:${Math.min(P(v), P(b0))}%;width:${Math.abs(P(v) - P(b0))}%"></i>`;
+  const limites = t => {
+    if (t.b === undefined) return '';
+    const vLo = fmt(t.b * (1 + NIV[0] / 100)), vHi = fmt(t.b * (1 + ultimo / 100));
+    const [xi, ti, xd, td] = t.lo <= t.hi ? [t.lo, vLo, t.hi, vHi] : [t.hi, vHi, t.lo, vLo];
+    return `<span style="right:${100 - P(Math.min(xi, b0))}%">${ti}</span><span style="left:${P(Math.max(xd, b0))}%">${td}</span>`;
+  };
+  const nMarcas = document.body.classList.contains('dlg') ? 5 : 3, marcas = [];
+  for (let k = 0; k < nMarcas; k++) marcas.push(gMin + (gMax - gMin) * k / (nMarcas - 1));
+  const eje = gMax > gMin ? `<div class="bar tor"><span></span><div class="eje">${marcas.map(v => `<span style="left:${P(v)}%">${fmt(+v.toPrecision(3))}</span>`).join('')}</div></div>` : '';
   const marca = t => (t.sup ? '<i class="dot" style="background:var(--sup);width:7px;height:7px;border-radius:50%;margin-right:4px"></i>' : '');
   const detalle = t => esc(t.nombre + (t.b === undefined ? '' : ` — valor base ${fmt(t.b)}; se probó con ${fmt(t.b * (1 + NIV[0] / 100))} y ${fmt(t.b * (1 + NIV[NIV.length - 1] / 100))}`));
-  $('tornado').innerHTML = tor.map(t => `<div class="bar"><span class="nm" title="${detalle(t)}">${marca(t)}${esc(t.nombre)}</span>
-      <div class="track">${seg(t.lo, '--neg')}${seg(t.hi, '--pos')}<i class="mid" style="left:${pos(b0)}%"></i></div>
-      <span class="val" title="de ${fmt(t.lo)} a ${fmt(t.hi)}">±${fmt(Math.abs(t.hi - t.lo) / 2)}</span></div>`).join('')
+  $('tornado').innerHTML = tor.map(t => `<div class="bar tor"><span class="nm" title="${detalle(t)}">${marca(t)}${esc(t.nombre)}</span>
+      <div class="track" title="Pronóstico: de ${fmt(t.lo)} a ${fmt(t.hi)}">${seg(t.lo, 't-lo')}${seg(t.hi, 't-hi')}<i class="mid" style="left:${P(b0)}%"></i>${limites(t)}</div></div>`).join('')
+    + (tor.length ? eje : '')
     + (todas.length > TOR_VISIBLES ? `<button class="mini" id="torMas" style="justify-self:start">${torTodo ? `Ver solo las ${TOR_VISIBLES} principales` : `Ver las ${todas.length} entradas`}</button>` : '')
     + (tor.length ? '' : '<p class="vacio">No disponible para este pronóstico.</p>');
   $('torNota').textContent = !tor.length ? '' : `Caso base: ${fmt(b0)}.`
