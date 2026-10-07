@@ -31,6 +31,7 @@ main{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:10px;
 .card h2{font-size:13px;margin:0 0 2px;display:flex;align-items:center;gap:6px}
 .dot{width:10px;height:10px;border-radius:3px;display:inline-block;flex:none}
 .hint{color:var(--muted);font-size:12px;margin:0 0 8px}
+#cuerpo [data-sec]>h3:first-child{margin-top:4px}
 h3{font-size:12px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 
 .btn{display:block;width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:#fff;font-weight:600;text-align:center}
@@ -178,8 +179,12 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
       <p class="hint" id="subRes"></p>
       <div class="tabs" id="tabs"></div>
       <button class="btn solo-panel" id="ventana" style="margin-bottom:10px">⤢ Abrir en ventana grande</button>
+      <div class="seg solo-panel" id="secs" style="margin-bottom:10px">
+        <button data-sec="hist">Histograma</button><button data-sec="stats">Estadísticas</button><button data-sec="sens">Sensibilidad</button>
+      </div>
       <div id="cuerpo">
         <div>
+          <section data-sec="hist">
           <canvas id="hist"></canvas>
           <p class="legend" style="text-align:center">Barras: frecuencia (eje izquierdo). Línea: probabilidad acumulada (eje derecho).<br>Arrastra las líneas rojas o escribe los límites.</p>
           <div class="seg" id="colas" style="margin-top:8px">
@@ -191,6 +196,8 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
             <label class="campo">Certeza %<input id="certPct" type="number" step="any" min="0" max="100"></label>
           </div>
           <div class="certBox"><b id="certNum"></b><span id="certTxt"></span></div>
+          </section>
+          <section data-sec="sens">
           <h3>Sensibilidad (correlación de rangos)</h3>
           <div class="bars" id="sens"></div>
           <p class="legend">Entre paréntesis: contribución a la varianza.</p>
@@ -202,8 +209,9 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
           <h3>Gráfico de araña (cada entrada de −10 % a +10 %)</h3>
           <canvas id="arana"></canvas>
           <p class="legend" id="aranaLeg"></p>
+          </section>
         </div>
-        <div>
+        <div data-sec="stats">
           <h3>Estadísticas</h3>
           <table id="stats"></table>
           <h3>Percentiles</h3>
@@ -447,7 +455,7 @@ const NIV = [-10, -5, 5, 10];
 const PALETA = ['#2563eb', '#d9534f', '#e69f00', '#009e73', '#cc79a7', '#56b4e9', '#7c3aed', '#6b7280'];
 let modelo = {supuestos: [], pronosticos: [], iter: 1000, semilla: '', vivo: false, colorear: true, detenerPrec: false, precedentes: true, rapido: true, contador: 0};
 let corridas = [], resultado = null, sel = 0, cancelar = false, selDir = null, torTodo = false;
-let cert = {tipo: 'dos', lo: -Infinity, hi: Infinity}, geo = null;
+let cert = {tipo: 'dos', lo: -Infinity, hi: Infinity}, geo = null, seccion = 'hist';
 
 function partir(dir) {
   const i = dir.lastIndexOf('!');
@@ -537,7 +545,7 @@ async function repintarTodo() {
 function vista(v) {
   for (const x of ['modelo', 'resultados', 'corridas']) $('v-' + x).hidden = x !== v;
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.vista === v));
-  if (v === 'resultados' && resultado) { actualizarCerteza(); arana(); }
+  if (v === 'resultados' && resultado) { actualizarCerteza(); verSeccion(seccion); }
   if (v === 'corridas') pintarCorridas();
 }
 
@@ -1109,6 +1117,7 @@ function pintarResultados() {
     ? resultado.salidas.map((s, i) => `<button class="chip${i === sel ? ' on' : ''}" data-tab="${i}">${esc(s.nombre)}</button>`).join('')
     : `<span class="chip on">${esc(S.nombre)}</span>`;
   $('stats').innerHTML = [
+    ['Número de datos', (resultado.n - (S.errores || 0)).toLocaleString('es')],
     ['Media', fmt(r.media)], ['Mediana', fmt(r.mediana)], ['Desviación estándar', fmt(r.sd)], ['Varianza', fmt(r.varianza)],
     ['Coef. de variación', fmt(r.cv)], ['Mínimo', fmt(r.min)], ['Máximo', fmt(r.max)], ['Rango', fmt(r.max - r.min)],
     ...(S.errores ? [['Iteraciones con error (excluidas)', `${S.errores.toLocaleString('es')} de ${resultado.n.toLocaleString('es')}`]] : []),
@@ -1128,10 +1137,20 @@ function pintarResultados() {
   }).join('');
 
   pintarTornado();
-  arana();
   fijarCerteza(90);
+  verSeccion(seccion);
 }
 
+// Pestañas de Resultados en el panel; en la ventana grande se muestra todo a la vez
+function verSeccion(x) {
+  seccion = x;
+  const todo = document.body.classList.contains('dlg');
+  document.querySelectorAll('#cuerpo [data-sec]').forEach(e => { e.hidden = !todo && e.dataset.sec !== x; });
+  document.querySelectorAll('#secs button').forEach(b => b.classList.toggle('on', b.dataset.sec === x));
+  if (!resultado) return;
+  if (todo || x === 'hist') histograma(resultado.salidas[sel].datos);
+  if (todo || x === 'sens') arana();
+}
 function pintarTornado() {
   const S = resultado.salidas[sel], b0 = S.base, todas = efectos(S), tor = torTodo ? todas : todas.slice(0, TOR_VISIBLES);
   let gMin = b0, gMax = b0;
@@ -1273,6 +1292,7 @@ function iniciarResultados() {
     sel = +e.target.dataset.tab; pintarResultados();
   });
   $('tornado').addEventListener('click', e => { if (e.target.id === 'torMas') { torTodo = !torTodo; pintarTornado(); } });
+  $('secs').onclick = e => e.target.dataset.sec && verSeccion(e.target.dataset.sec);
   $('colas').onclick = e => {
     if (!e.target.dataset.cola || !resultado) return;
     cert.tipo = e.target.dataset.cola; fijarCerteza(90);
