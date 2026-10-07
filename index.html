@@ -181,7 +181,7 @@ body.dlg .bar{grid-template-columns:150px 1fr 100px}
       <div id="cuerpo">
         <div>
           <canvas id="hist"></canvas>
-          <p class="legend" style="text-align:center">Arrastra las líneas del gráfico o escribe los límites.</p>
+          <p class="legend" style="text-align:center">Barras: frecuencia (eje izquierdo). Línea: probabilidad acumulada (eje derecho).<br>Arrastra las líneas rojas o escribe los límites.</p>
           <div class="seg" id="colas" style="margin-top:8px">
             <button data-cola="dos">Dos colas</button><button data-cola="izq">Cola izquierda ≤</button><button data-cola="der">Cola derecha ≥</button>
           </div>
@@ -1224,7 +1224,7 @@ function actualizarCerteza(origen) {
 function histograma(s) {
   const cv = $('hist'), {g, W, H} = lienzo(cv);
   if (!W) return;
-  const mL = 40, mR = 10, mT = 14, mB = 24, pw = W - mL - mR, ph = H - mT - mB;
+  const mL = 40, mR = 36, mT = 14, mB = 24, pw = W - mL - mR, ph = H - mT - mB;
   const min = s[0], max = s[s.length - 1], span = max - min || 1, nb = W < 420 ? 30 : 50, bins = new Array(nb).fill(0);
   for (let i = 0; i < s.length; i++) bins[Math.min(nb - 1, Math.floor((s[i] - min) / span * nb))]++;
   const top = Math.max(...bins), xDe = v => mL + pw * Math.min(1, Math.max(0, (v - min) / span));
@@ -1235,12 +1235,23 @@ function histograma(s) {
     const y = mT + ph - ph * k / 4;
     g.beginPath(); g.moveTo(mL, y + .5); g.lineTo(mL + pw, y + .5); g.stroke();
     g.fillText(dec(100 * top * k / 4 / s.length, 1) + ' %', mL - 4, y);
+    g.textAlign = 'left'; g.fillText(25 * k + ' %', mL + pw + 4, y); g.textAlign = 'right'; // eje de la acumulada
   }
   for (let b = 0; b < nb; b++) {
     const centro = min + span * (b + .5) / nb, h = ph * bins[b] / top;
     g.fillStyle = centro >= cert.lo && centro <= cert.hi ? color('--accent') : color('--accent-soft');
     g.fillRect(mL + pw * b / nb + .5, mT + ph - h, Math.max(1, pw / nb - 1), h);
   }
+  // Curva acumulada (eje derecho): proporción de iteraciones con un valor menor o igual a cada punto
+  g.lineJoin = 'round';
+  g.beginPath();
+  const pasos = Math.max(2, Math.round(pw / 2));
+  for (let i = 0; i <= pasos; i++) {
+    const y = mT + ph - ph * contarEntre(s, -Infinity, min + span * i / pasos) / s.length;
+    i ? g.lineTo(mL + pw * i / pasos, y) : g.moveTo(mL, y);
+  }
+  g.strokeStyle = color('--card'); g.lineWidth = 4; g.stroke(); // borde claro para que se distinga sobre las barras
+  g.strokeStyle = color('--text'); g.lineWidth = 1.5; g.stroke();
   g.fillStyle = color('--muted'); g.textBaseline = 'top';
   const marcas = W < 420 ? 2 : 4;
   for (let k = 0; k <= marcas; k++) {
